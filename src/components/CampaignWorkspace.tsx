@@ -30,6 +30,8 @@ export default function CampaignWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
 
+  const [rawCohort, setRawCohort] = useState<any[]>([]);
+
   const addLog = (message: string, status: 'info' | 'success' | 'loading' = 'info') => {
     setLogs(prev => [...prev, {
       id: Math.random().toString(36).substr(2, 9),
@@ -53,10 +55,45 @@ export default function CampaignWorkspace() {
     addLog(isRegeneration ? 'Processing feedback and regenerating...' : 'Parsing campaign brief...', 'loading');
 
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+      const apiKeyStr = (import.meta as any).env.VITE_GEMINI_API_KEY || (process as any).env?.GEMINI_API_KEY || '';
+      const ai = new GoogleGenAI({ apiKey: apiKeyStr });
       
-      addLog('Fetching customer cohort data...', 'loading');
-      await new Promise(r => setTimeout(r, 800));
+      addLog('Authenticating and fetching customer cohort data from CampaignX API...', 'loading');
+      
+      const API_URL = (import.meta as any).env.VITE_CAMPAIGNX_API_URL || 'https://campaignx.inxiteout.ai';
+      const API_KEY = (import.meta as any).env.VITE_CAMPAIGNX_API_KEY;
+      
+      let totalCustomers = 0;
+      let fetchedCohortData: any[] = [];
+
+      if (API_KEY) {
+        try {
+          const cohortRes = await fetch(`${API_URL}/api/v1/get_customer_cohort`, {
+            method: 'GET',
+            headers: {
+              'X-API-Key': API_KEY
+            }
+          });
+          
+          if (cohortRes.ok) {
+            const cohortDataResp = await cohortRes.json();
+            fetchedCohortData = cohortDataResp.data || cohortDataResp || [];
+            if (!Array.isArray(fetchedCohortData) && typeof fetchedCohortData === 'object') {
+                fetchedCohortData = Object.values(fetchedCohortData);
+            }
+            setRawCohort(fetchedCohortData);
+            totalCustomers = cohortDataResp.total_count || fetchedCohortData.length || 0;
+            addLog(`Successfully retrieved cohort: ${totalCustomers} customers available.`, 'success');
+          } else {
+            addLog(`Failed to fetch cohort data: ${cohortRes.statusText}`, 'info');
+          }
+        } catch (e) {
+          addLog('Network error while fetching cohort data.', 'info');
+        }
+      } else {
+        addLog('VITE_CAMPAIGNX_API_KEY is missing. Skipping real cohort fetch.', 'info');
+        await new Promise(r => setTimeout(r, 800));
+      }
       
       addLog('Creating customer segments...', 'loading');
       await new Promise(r => setTimeout(r, 600));
@@ -85,7 +122,7 @@ export default function CampaignWorkspace() {
       `;
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-2.5-flash",
         contents: [{ parts: [{ text: prompt }] }],
         config: {
           responseMimeType: "application/json",
@@ -117,10 +154,150 @@ export default function CampaignWorkspace() {
       setCampaign(result);
       addLog('Email content generated successfully.', 'success');
       addLog('Waiting for human approval...', 'info');
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError('Failed to generate campaign. Please check your API key or try again.');
-      addLog('Error during generation process.', 'info');
+      setError(`Failed to generate campaign: ${err.message || JSON.stringify(err)}`);
+      addLog(`Error during generation: ${err.message}`, 'info');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const executeCampaign = async () => {
+    if (!campaign || rawCohort.length === 0) {
+      addLog('Cannot execute: Missing campaign data or customer cohort.', 'info');
+      return;
+    }
+
+    addLog('Executing campaign... Analyzing target segment.', 'loading');
+    setIsGenerating(true);
+
+    try {
+      const apiKeyStr = (import.meta as any).env.VITE_GEMINI_API_KEY || (process as any).env?.GEMINI_API_KEY || '';
+      const ai = new GoogleGenAI({ apiKey: apiKeyStr });
+
+      // 1. AI Demographic Filtering
+      addLog('AI is filtering customer database based on target segment...', 'loading');
+      
+      const filterPrompt = `
+        You are a data analyst. I have a marketing campaign targeting this segment: "${campaign.targetSegment}".
+        
+        I have a database of customers. Return ONLY a javascript filter array function as a string that I can run via eval() to filter the array.
+        For example, if the segment is 'female senior citizens', return: (c) => c['Gender'] === 'Female' && c['Age'] >= 60
+        If the segment is 'high income users', return: (c) => c['Monthly_Income'] > 100000
+        
+        Customer keys available (based on actual live data): 
+        - "customer_id", "Full_name", "Email", "City" (strings)
+        - "Age", "Monthly_Income", "Kids_in_Household", "Credit score" (numbers)
+        - "Gender" (string: "Male" or "Female")
+        - "KYC status", "App_Installed", "Existing Customer", "Social_Media_Active" (string: "Y" or "N")
+        
+        Return ONLY the raw arrow function string. Use bracket notation for keys with spaces e.g c['Credit score'].
+        Do NOT write markdown blocks, do NOT write explanations.
+      `;
+
+      let filterFuncString = '(c) => true'; // Fallback
+      try {
+        const filterRes = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: [{ parts: [{ text: filterPrompt }] }],
+        });
+        filterFuncString = filterRes.text?.replace(/`/g, '').replace(/javascript/g, '').trim() || '(c) => true';
+        addLog(`Generated AI filter: ${filterFuncString}`, 'info');
+      } catch (e) {
+        addLog(`Failed to perfectly parse AI filter, using fallback...`, 'info');
+      }
+
+      // 2. Apply Filter
+      let target_customer_ids: string[] = [];
+      try {
+        const filterFunc = eval(filterFuncString);
+        const filteredCohort = rawCohort.filter(filterFunc);
+        target_customer_ids = filteredCohort.map(c => c.customer_id || c.id || c.CLIENTNUM).filter(Boolean);
+        addLog(`Filtered cohort: ${target_customer_ids.length} customers matched out of ${rawCohort.length}.`, 'success');
+      } catch (err: any) {
+        addLog(`Filter javascript parsing failed (${err.message}). Using fallback matching...`, 'info');
+        // Fallback if eval fails: randomly sample 10%
+        target_customer_ids = rawCohort.map(c => c.customer_id || c.id || c.CLIENTNUM).slice(0, Math.max(1, Math.floor(rawCohort.length * 0.1)));
+        addLog(`Fallback matching triggered: ${target_customer_ids.length} customers selected.`, 'info');
+      }
+
+      if (target_customer_ids.length === 0) {
+        addLog('No customers matched the criteria. Aborting launch.', 'info');
+        return;
+      }
+
+      // 3. Send Campaign via API
+      addLog('Dispatching campaign to CampaignX API...', 'loading');
+      const API_URL = (import.meta as any).env.VITE_CAMPAIGNX_API_URL || 'https://campaignx.inxiteout.ai';
+      const API_KEY = (import.meta as any).env.VITE_CAMPAIGNX_API_KEY;
+
+      if (!API_KEY) {
+        addLog('VITE_CAMPAIGNX_API_KEY missing. Simulating success.', 'success');
+        setIsApproved(true);
+        setTimeout(() => setIsApproved(false), 5000);
+        return;
+      }
+
+      // Format DD:MM:YY HH:MM:SS from schedule state
+      let formattedSendTime = '';
+      try {
+        let d = new Date(`${schedule.date}T${schedule.time}:00`);
+        // If the parsed date is in the past (e.g., default 09:00 AM on current day), bump it to 5 mins from now
+        if (d.getTime() < Date.now()) {
+           d = new Date(Date.now() + 5 * 60000); // add 5 minutes
+           addLog(`Scheduled time was in the past. Automatically adjusting to +5 minutes from now.`, 'info');
+        }
+
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = String(d.getFullYear()).slice(-2);
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        const seconds = String(d.getSeconds()).padStart(2, '0');
+        formattedSendTime = `${day}:${month}:${year} ${hours}:${minutes}:${seconds}`;
+        addLog(`Formatted send time for API: ${formattedSendTime}`, 'info');
+      } catch (e) {
+        // Fallback for emergency formatting - 5 mins from now
+        const fd = new Date(Date.now() + 5 * 60000);
+        const day = String(fd.getDate()).padStart(2, '0');
+        const month = String(fd.getMonth() + 1).padStart(2, '0');
+        const year = String(fd.getFullYear()).slice(-2);
+        const hours = String(fd.getHours()).padStart(2, '0');
+        const minutes = String(fd.getMinutes()).padStart(2, '0');
+        const seconds = String(fd.getSeconds()).padStart(2, '0');
+        formattedSendTime = `${day}:${month}:${year} ${hours}:${minutes}:${seconds}`;
+      }
+
+      const sendPayload = {
+        subject: campaign.subject,
+        body: campaign.body,
+        list_customer_ids: target_customer_ids,
+        send_time: formattedSendTime
+      };
+
+      const sendRes = await fetch(`${API_URL}/api/v1/send_campaign`, {
+        method: 'POST',
+        headers: {
+          'X-API-Key': API_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(sendPayload)
+      });
+
+      if (sendRes.ok) {
+        const result = await sendRes.json();
+        addLog(`Campaign Launched Successfully! Campaign ID: ${result.campaign_id || 'UNKNOWN'}`, 'success');
+        setIsApproved(true);
+        setTimeout(() => setIsApproved(false), 8000);
+      } else {
+        const errText = await sendRes.text();
+        addLog(`API Launch Failed: ${sendRes.status} - ${errText}`, 'info');
+      }
+
+    } catch (err: any) {
+      console.error(err);
+      addLog(`Execution error: ${err.message}`, 'info');
     } finally {
       setIsGenerating(false);
     }
@@ -277,14 +454,11 @@ export default function CampaignWorkspace() {
                       Regenerate
                     </button>
                     <button
-                      onClick={() => {
-                        addLog('Campaign approved and scheduled.', 'success');
-                        setIsApproved(true);
-                        setTimeout(() => setIsApproved(false), 5000);
-                      }}
+                      onClick={() => executeCampaign()}
+                      disabled={isGenerating}
                       className="flex items-center gap-2 bg-[#6366F1] hover:bg-[#4F46E5] disabled:bg-slate-600 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg"
                     >
-                      <CheckCircle2 className="w-5 h-5" />
+                      {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
                       Confirm & Approve
                     </button>
                   </div>
@@ -297,7 +471,7 @@ export default function CampaignWorkspace() {
                         className="p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center gap-3 text-emerald-700 font-bold text-sm"
                       >
                         <CheckCircle2 className="w-5 h-5" />
-                        Campaign has been scheduled successfully!
+                        Campaign API Execution Complete! Check Activity logs below.
                       </motion.div>
                     )}
                   </AnimatePresence>
