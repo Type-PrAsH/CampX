@@ -3,11 +3,6 @@
 # 🤖 XDeposit AI Marketing Agent
 ### Autonomous AI Marketing System for SuperBFSI
 
-[![Hackathon](https://img.shields.io/badge/Built_for-Hackathon-orange.svg)]()
-[![AI Agent](https://img.shields.io/badge/AI-Autonomous_Agents-success.svg)]()
-
-> A fully autonomous AI system that handles the entire marketing workflow for SuperBFSI's premium term deposit product, XDeposit—without requiring a human marketing team.
-
 </div>
 
 ---
@@ -36,30 +31,6 @@ The **XDeposit AI Marketing Agent** acts as an end-to-end digital marketing team
 
 ---
 
-## 🏗️ System Architecture
-
-```mermaid
-graph TD
-    A[User / Marketing Manager] -->|Natural Language Brief| B(AI Orchestrator)
-    
-    subgraph AI Agent Swarm
-        B --> C[Strategy Agent]
-        C --> D[Content Agent]
-        D --> E[Execution Agent]
-        E --> F[Analytics Agent]
-    end
-    
-    E -->|API Calls| G((CampaignX API))
-    F -->|Fetch Metrics| G
-    
-    G --> H[Live Campaigns]
-    G --> I[Performance Data]
-    I --> F
-    F -->|Report| A
-```
-
----
-
 ## ⚙️ AI Agent Workflow
 
 1. **Input Phase:** The user provides a simple text prompt (e.g., *"We are launching XDeposit. It has 8% interest and a 0.5% bonus for female senior citizens. Run a campaign to get 1000 leads."*).
@@ -70,16 +41,6 @@ graph TD
    - Calls the API to set the granular audience targeting rules.
    - Calls the API to publish the campaign live.
 5. **Monitoring (Analytics Agent):** Continuously queries the analytics endpoint to summarize impressions, clicks, and ROI back to the user.
-
----
-
-## 💻 Tech Stack
-
-- **Core AI:** Large Language Models (LLMs), LangChain / LlamaIndex for Agentic Swarms
-- **Backend:** Python, FastAPI
-- **Frontend/UI:** React (Vite.js) & TailwindCSS v4
-- **External Integration:** CampaignX API
-- **Database:** Internal Logging (Mocked for Hackathon logic)
 
 ---
 
@@ -175,95 +136,3 @@ Below is the detailed breakdown of the CampaignX API endpoints (v1) integrated i
     "spend": 120.50
   }
   ```
-
-
-
-## 🛠️ Installation Guide
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/yourusername/xdeposit-ai-agent.git
-   cd xdeposit-ai-agent
-   ```
-
-2. **Backend Setup:**
-   ```bash
-   cd backend
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
-
-3. **Frontend Setup:**
-   ```bash
-   cd ../frontend
-   npm install
-   ```
-
----
-
-## 🔐 Environment Variables
-
-Create a `.env` file in the `backend` directory based on `.env.example`:
-
-```ini
-# LLM Provider Key (OpenAI / Anthropic / Gemini)
-OPENAI_API_KEY=your_llm_api_key_here
-
-# CampaignX API Credentials
-CAMPAIGNX_API_URL=https://api.campaignx.com
-CAMPAIGNX_API_KEY=your_campaignx_api_key
-CAMPAIGNX_SECRET=your_campaignx_secret
-```
-
----
-
-## 🚀 How to Run the Project
-
-1. **Start the Backend Server:**
-   ```bash
-   cd backend
-   uvicorn main:app --reload --port 8000
-   ```
-2. **Start the Frontend Application:**
-   ```bash
-   cd ../frontend
-   npm run dev
-   ```
-3. **Access the Dashboard:**
-   Open your browser and navigate to the endpoint provided by Vite (usually `http://localhost:5173`).
-
----
-
-## 📝 Example Workflow
-
-1. Navigate to the AI Marketing Dashboard.
-2. In the prompt box, paste the following brief:
-   > *"Launch a campaign for SuperBFSI's new XDeposit. Target demographic is females over 60. Highlight the 0.5% bonus interest rate. Set the budget to $5000."*
-3. Click **"Generate & Deploy"**.
-4. Observe the UI logs as the AI Agents automatically strategize, call the CampaignX APIs via backend wrappers, and return the live `campaign_id`.
-5. Visual confirmations of Live execution are seamlessly integrated into the right-hand container.
-
----
-
-## 📸 Screenshots
-
-*(Replace these placeholders with actual screenshots of your application)*
-
-| Dashboard Interface | AI Agent Thought Process | Campaign Analytics |
-|:---:|:---:|:---:|
-| <img src="https://via.placeholder.com/400x250.png?text=Dashboard+UI" alt="Dashboard" /> | <img src="https://via.placeholder.com/400x250.png?text=Agent+Logs" alt="Logs" /> | <img src="https://via.placeholder.com/400x250.png?text=Analytics+Graphs" alt="Analytics" /> |
-
----
-
-## 🔮 Future Improvements
-
-- **Multi-Channel Publishing:** Extend support beyond CampaignX to platforms like Google Ads and Meta Ads.
-- **A/B Testing Agents:** Allow the AI to automatically run parallel copy variations and pause the underperforming ones.
-- **Image Generation:** Integrate DALL-E 3 or Midjourney APIS so the Content Agent can generate corresponding visual creatives.
-
----
-
-## 👥 Contributors
-
-- **[Pranshu Samadhiya]** - *AI Engineer & Full Stack Developer* - [GitHub](https://github.com/pranshu-samadhiya)

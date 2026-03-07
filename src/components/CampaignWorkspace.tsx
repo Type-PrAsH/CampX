@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Sparkles, Send, RefreshCw, CheckCircle2, Info, 
+import {
+  Sparkles, Send, RefreshCw, CheckCircle2, Info,
   Terminal, User, Target, Clock, Users, MessageSquare,
   AlertCircle, Loader2
 } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
+import Groq from "groq-sdk";
 import { CampaignData, ActivityLog, ScheduleSettings } from '../types';
 import ScheduleSection from './ScheduleSection';
 
@@ -51,18 +51,18 @@ export default function CampaignWorkspace() {
     setIsGenerating(true);
     setError(null);
     if (!isRegeneration) setCampaign(null);
-    
+
     addLog(isRegeneration ? 'Processing feedback and regenerating...' : 'Parsing campaign brief...', 'loading');
 
     try {
-      const apiKeyStr = (import.meta as any).env.VITE_GEMINI_API_KEY || (process as any).env?.GEMINI_API_KEY || '';
-      const ai = new GoogleGenAI({ apiKey: apiKeyStr });
-      
+      const apiKeyStr = (import.meta as any).env.VITE_GROQ_API_KEY || (process as any).env?.GROQ_API_KEY || '';
+      const ai = new Groq({ apiKey: apiKeyStr, dangerouslyAllowBrowser: true });
+
       addLog('Authenticating and fetching customer cohort data from CampaignX API...', 'loading');
-      
+
       const API_URL = (import.meta as any).env.VITE_CAMPAIGNX_API_URL || 'https://campaignx.inxiteout.ai';
       const API_KEY = (import.meta as any).env.VITE_CAMPAIGNX_API_KEY;
-      
+
       let totalCustomers = 0;
       let fetchedCohortData: any[] = [];
 
@@ -74,12 +74,12 @@ export default function CampaignWorkspace() {
               'X-API-Key': API_KEY
             }
           });
-          
+
           if (cohortRes.ok) {
             const cohortDataResp = await cohortRes.json();
             fetchedCohortData = cohortDataResp.data || cohortDataResp || [];
             if (!Array.isArray(fetchedCohortData) && typeof fetchedCohortData === 'object') {
-                fetchedCohortData = Object.values(fetchedCohortData);
+              fetchedCohortData = Object.values(fetchedCohortData);
             }
             setRawCohort(fetchedCohortData);
             totalCustomers = cohortDataResp.total_count || fetchedCohortData.length || 0;
@@ -94,12 +94,12 @@ export default function CampaignWorkspace() {
         addLog('VITE_CAMPAIGNX_API_KEY is missing. Skipping real cohort fetch.', 'info');
         await new Promise(r => setTimeout(r, 800));
       }
-      
+
       addLog('Creating customer segments...', 'loading');
       await new Promise(r => setTimeout(r, 600));
 
       addLog('Generating campaign strategy...', 'loading');
-      
+
       const prompt = `
         You are an AI Marketing Assistant. Based on the following brief, generate a comprehensive email campaign.
         Brief: ${brief}
@@ -121,36 +121,14 @@ export default function CampaignWorkspace() {
         }
       `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [{ parts: [{ text: prompt }] }],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              strategy: { type: Type.STRING },
-              targetSegment: { type: Type.STRING },
-              sendTime: { type: Type.STRING },
-              estimatedAudience: { type: Type.STRING },
-              subject: { type: Type.STRING },
-              body: { type: Type.STRING },
-              explanation: {
-                type: Type.OBJECT,
-                properties: {
-                  audience: { type: Type.STRING },
-                  sendTime: { type: Type.STRING },
-                  tone: { type: Type.STRING }
-                }
-              }
-            },
-            required: ["strategy", "targetSegment", "sendTime", "estimatedAudience", "subject", "body", "explanation"]
-          }
-        }
+      const response = await ai.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" }
       });
 
-      const result = JSON.parse(response.text || '{}');
-      
+      const result = JSON.parse(response.choices[0]?.message?.content || '{}');
+
       setCampaign(result);
       addLog('Email content generated successfully.', 'success');
       addLog('Waiting for human approval...', 'info');
@@ -173,12 +151,12 @@ export default function CampaignWorkspace() {
     setIsGenerating(true);
 
     try {
-      const apiKeyStr = (import.meta as any).env.VITE_GEMINI_API_KEY || (process as any).env?.GEMINI_API_KEY || '';
-      const ai = new GoogleGenAI({ apiKey: apiKeyStr });
+      const apiKeyStr = (import.meta as any).env.VITE_GROQ_API_KEY || (process as any).env?.GROQ_API_KEY || '';
+      const ai = new Groq({ apiKey: apiKeyStr, dangerouslyAllowBrowser: true });
 
       // 1. AI Demographic Filtering
       addLog('AI is filtering customer database based on target segment...', 'loading');
-      
+
       const filterPrompt = `
         You are a data analyst. I have a marketing campaign targeting this segment: "${campaign.targetSegment}".
         
@@ -198,11 +176,11 @@ export default function CampaignWorkspace() {
 
       let filterFuncString = '(c) => true'; // Fallback
       try {
-        const filterRes = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: [{ parts: [{ text: filterPrompt }] }],
+        const filterRes = await ai.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: filterPrompt }],
         });
-        filterFuncString = filterRes.text?.replace(/`/g, '').replace(/javascript/g, '').trim() || '(c) => true';
+        filterFuncString = filterRes.choices[0]?.message?.content?.replace(/`/g, '').replace(/javascript/g, '').trim() || '(c) => true';
         addLog(`Generated AI filter: ${filterFuncString}`, 'info');
       } catch (e) {
         addLog(`Failed to perfectly parse AI filter, using fallback...`, 'info');
@@ -245,8 +223,8 @@ export default function CampaignWorkspace() {
         let d = new Date(`${schedule.date}T${schedule.time}:00`);
         // If the parsed date is in the past (e.g., default 09:00 AM on current day), bump it to 5 mins from now
         if (d.getTime() < Date.now()) {
-           d = new Date(Date.now() + 5 * 60000); // add 5 minutes
-           addLog(`Scheduled time was in the past. Automatically adjusting to +5 minutes from now.`, 'info');
+          d = new Date(Date.now() + 5 * 60000); // add 5 minutes
+          addLog(`Scheduled time was in the past. Automatically adjusting to +5 minutes from now.`, 'info');
         }
 
         const day = String(d.getDate()).padStart(2, '0');
@@ -492,7 +470,7 @@ export default function CampaignWorkspace() {
               <Info className="w-5 h-5 text-[#6366F1]" />
               <h3>AI Strategy Explanation</h3>
             </div>
-            
+
             {campaign ? (
               <div className="space-y-4">
                 <div className="space-y-1">
@@ -525,8 +503,8 @@ export default function CampaignWorkspace() {
                   <span className="text-slate-600 shrink-0">[{log.timestamp}]</span>
                   <span className={cn(
                     "flex items-center gap-2",
-                    log.status === 'success' ? 'text-emerald-400' : 
-                    log.status === 'loading' ? 'text-indigo-400' : 'text-slate-300'
+                    log.status === 'success' ? 'text-emerald-400' :
+                      log.status === 'loading' ? 'text-indigo-400' : 'text-slate-300'
                   )}>
                     {log.status === 'loading' && <Loader2 className="w-3 h-3 animate-spin" />}
                     {log.status === 'success' && <CheckCircle2 className="w-3 h-3" />}
