@@ -6,7 +6,7 @@ export const config = {
   campaignxBaseUrl:
     import.meta.env.VITE_CAMPAIGNX_API_URL ||
     "https://campaignx.inxiteout.ai",
-  geminiApiKey: import.meta.env.VITE_GEMINI_API_KEY || "",
+  openaiApiKey: import.meta.env.VITE_OPENAI_API_KEY || "",
   // Legacy aliases kept for backward compatibility
   get apiKey() {
     return this.campaignxApiKey;

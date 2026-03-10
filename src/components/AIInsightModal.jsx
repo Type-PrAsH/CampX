@@ -60,7 +60,8 @@ Return the response as a JSON array of exactly 3 objects:
   }
 ]
 The only valid values for impact are: "High Impact", "Medium Impact", "Critical".
-The only valid values for iconType are: "zap", "target", "trending".`;
+The only valid values for iconType are: "zap", "target", "trending".
+Respond ONLY with the JSON array, no extra text.`;
 
       const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
       const response = await groq.chat.completions.create({
