@@ -1,27 +1,27 @@
-import React, { useState } from 'react';
-import Sidebar from './components/Sidebar';
-import Dashboard from './components/Dashboard';
-import Trends from './components/Trends';
-import EmailActivity from './components/EmailActivity';
-import CampaignWorkspace from './components/CampaignWorkspace';
-import Settings from './components/Settings';
-import { View } from './types';
-import { AnimatePresence, motion } from 'motion/react';
+import React, { useState } from "react";
+import Sidebar from "./components/Sidebar";
+import Dashboard from "./components/Dashboard";
+import Trends from "./components/Trends";
+import EmailActivity from "./components/EmailActivity";
+import CampaignWorkspace from "./components/CampaignWorkspace";
+import Settings from "./components/Settings";
+
+import { AnimatePresence, motion } from "motion/react";
 
 export default function App() {
-  const [currentView, setCurrentView] = useState<View>('campaign');
+  const [currentView, setCurrentView] = useState("campaign");
 
   const renderView = () => {
     switch (currentView) {
-      case 'dashboard':
+      case "dashboard":
         return <Dashboard />;
-      case 'trends':
+      case "trends":
         return <Trends />;
-      case 'activity':
+      case "activity":
         return <EmailActivity />;
-      case 'campaign':
+      case "campaign":
         return <CampaignWorkspace />;
-      case 'settings':
+      case "settings":
         return <Settings />;
       default:
         return <Dashboard />;
@@ -31,7 +31,7 @@ export default function App() {
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] font-sans text-zinc-900">
       <Sidebar currentView={currentView} onViewChange={setCurrentView} />
-      
+
       <main className="flex-1 overflow-y-auto h-screen">
         <AnimatePresence mode="wait">
           <motion.div

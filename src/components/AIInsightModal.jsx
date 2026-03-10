@@ -1,26 +1,26 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { X, Sparkles, TrendingUp, Target, Zap, ChevronRight, MessageSquare, Loader2, AlertCircle } from 'lucide-react';
-import { DashboardMetrics } from '../hooks/useRealData';
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import {
+  X,
+  Sparkles,
+  TrendingUp,
+  Target,
+  Zap,
+  ChevronRight,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
+import { GoogleGenAI } from "@google/genai";
 
-interface AIInsightModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  metrics?: DashboardMetrics;
-  chartData?: any;
-}
-
-interface Insight {
-  title: string;
-  description: string;
-  impact: 'High Impact' | 'Medium Impact' | 'Critical';
-  iconType: 'zap' | 'target' | 'trending';
-}
-
-export default function AIInsightModal({ isOpen, onClose, metrics, chartData }: AIInsightModalProps) {
-  const [insights, setInsights] = useState<Insight[]>([]);
+export default function AIInsightModal({
+  isOpen,
+  onClose,
+  metrics,
+  chartData,
+}) {
+  const [insights, setInsights] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (isOpen && insights.length === 0 && !isGenerating && metrics) {
@@ -31,12 +31,12 @@ export default function AIInsightModal({ isOpen, onClose, metrics, chartData }: 
   const generateInsights = async () => {
     setIsGenerating(true);
     setError(null);
-    
+
     try {
-      const settingsKey = localStorage.getItem('gemini_api_key');
-      const envKey = (import.meta as any).env.VITE_GEMINI_API_KEY;
+      const settingsKey = localStorage.getItem("gemini_api_key");
+      const envKey = import.meta.env.VITE_GEMINI_API_KEY;
       const apiKey = settingsKey || envKey;
-      
+
       if (!apiKey) {
         throw new Error("Gemini API Key missing. Please set it in Settings.");
       }
@@ -44,59 +44,55 @@ export default function AIInsightModal({ isOpen, onClose, metrics, chartData }: 
       const prompt = `You are a world-class Email Marketing AI analyst. Analyze the following live platform data from a user's recent campaigns and provide EXACTLY 3 actionable, highly specific insights.
 
 CURRENT TOTAL PLATFORM METRICS:
-Total Emails Sent: ${metrics?.totalSent || '0'}
-Average Open Rate: ${metrics?.openRate || '0%'}
-Average Click Rate: ${metrics?.clickRate || '0%'}
-Unsubscribe Rate: ${metrics?.unsubscribes || '0%'}
-Open Rate Trend: ${metrics?.openRateTrend || 'neutral'}
+Total Emails Sent: ${metrics?.totalSent || "0"}
+Average Open Rate: ${metrics?.openRate || "0%"}
+Average Click Rate: ${metrics?.clickRate || "0%"}
+Unsubscribe Rate: ${metrics?.unsubscribes || "0%"}
+Open Rate Trend: ${metrics?.openRateTrend || "neutral"}
 
-Return the response PURELY as a JSON array of 3 objects with the following schema, and absolutely NO markdown formatting or conversational text around it:
+Return the response as a JSON array of exactly 3 objects:
 [
   {
     "title": "Short punchy title (max 5 words)",
     "description": "Specific, data-driven actionable advice based on the metrics provided (max 2 sentences).",
-    "impact": "High Impact" or "Medium Impact" or "Critical",
-    "iconType": "zap" or "target" or "trending"
+    "impact": "High Impact",
+    "iconType": "zap"
   }
-]`;
+]
+The only valid values for impact are: "High Impact", "Medium Impact", "Critical".
+The only valid values for iconType are: "zap", "target", "trending".`;
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.4,
-            maxOutputTokens: 800,
-          }
-        })
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          temperature: 0.4,
+        },
       });
 
-      if (!response.ok) {
-        const errData = await response.json();
-        console.error("Gemini API Error:", errData);
-        let errMsg = errData.error?.message || "Failed to communicate with AI.";
-        if (response.status === 429 || errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED')) {
-           errMsg = "Gemini API Free Tier Quota Exceeded (429). Please update your API Key in Settings or wait until tomorrow.";
-        }
-        throw new Error(errMsg);
-      }
+      const textResponse = response.text || "";
 
-      const data = await response.json();
-      const textResponse = data.candidates[0].content.parts[0].text;
-      
-      // Clean potential markdown blocks from Gemini
-      const cleanJson = textResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
-      
+      // Clean potential markdown blocks
+      const cleanJson = textResponse
+        .replace(/```json/gi, "")
+        .replace(/```/g, "")
+        .trim();
+
       try {
-        const parsedInsights = JSON.parse(cleanJson);
-        setInsights(parsedInsights);
+        let parsedInsights = JSON.parse(cleanJson);
+        // Handle models wrapping in an object
+        if (!Array.isArray(parsedInsights)) {
+          const arrVal = Object.values(parsedInsights).find(val => Array.isArray(val));
+          parsedInsights = arrVal || [parsedInsights];
+        }
+        setInsights(parsedInsights.slice(0, 3));
       } catch (parseError) {
-        console.error("Failed to parse Gemini response:", cleanJson);
+        console.error("Failed to parse AI response:", textResponse);
         throw new Error("AI returned malformed data. Please try again.");
       }
-      
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       setError(err.message || "Failed to generate AI insights.");
     } finally {
@@ -104,12 +100,15 @@ Return the response PURELY as a JSON array of 3 objects with the following schem
     }
   };
 
-  const renderIcon = (type: string) => {
+  const renderIcon = (type) => {
     switch (type) {
-      case 'target': return <Target className="w-5 h-5 text-[#6366F1]" />;
-      case 'trending': return <TrendingUp className="w-5 h-5 text-emerald-500" />;
-      case 'zap': 
-      default: return <Zap className="w-5 h-5 text-amber-500" />;
+      case "target":
+        return <Target className="w-5 h-5 text-[#6366F1]" />;
+      case "trending":
+        return <TrendingUp className="w-5 h-5 text-emerald-500" />;
+      case "zap":
+      default:
+        return <Zap className="w-5 h-5 text-amber-500" />;
     }
   };
 
@@ -118,14 +117,15 @@ Return the response PURELY as a JSON array of 3 objects with the following schem
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
           className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
         />
-        <motion.div 
+
+        <motion.div
           initial={{ opacity: 0, scale: 0.9, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -136,7 +136,7 @@ Return the response PURELY as a JSON array of 3 objects with the following schem
             <div className="absolute top-0 right-0 p-12 opacity-10">
               <Sparkles className="w-32 h-32" />
             </div>
-            <button 
+            <button
               onClick={onClose}
               className="absolute top-6 right-6 p-2 hover:bg-white/10 rounded-xl transition-colors"
             >
@@ -146,11 +146,16 @@ Return the response PURELY as a JSON array of 3 objects with the following schem
               <div className="p-2 bg-white/10 rounded-lg backdrop-blur-md">
                 <Sparkles className="w-5 h-5" />
               </div>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-100">Live AI Analysis</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-100">
+                Live AI Analysis
+              </span>
             </div>
-            <h3 className="text-3xl font-bold tracking-tight">Campaign Insights</h3>
+            <h3 className="text-3xl font-bold tracking-tight">
+              Campaign Insights
+            </h3>
             <p className="text-indigo-100 mt-2 text-sm max-w-md leading-relaxed font-medium">
-              Gemini AI is analyzing your real-time performance data to generate custom optimization strategies.
+              Gemini AI is analyzing your real-time performance data to generate
+              custom optimization strategies.
             </p>
           </div>
 
@@ -159,18 +164,25 @@ Return the response PURELY as a JSON array of 3 objects with the following schem
             {isGenerating ? (
               <div className="flex flex-col items-center justify-center h-full py-12 text-indigo-600 space-y-4">
                 <Loader2 className="w-12 h-12 animate-spin" />
-                <p className="text-sm font-bold text-slate-600 animate-pulse">Running data through Intelligence Engine...</p>
+                <p className="text-sm font-bold text-slate-600 animate-pulse">
+                  Running data through Intelligence Engine...
+                </p>
               </div>
             ) : error ? (
               <div className="flex flex-col items-center justify-center h-full py-12 text-rose-500 space-y-4">
                 <AlertCircle className="w-12 h-12" />
                 <p className="text-sm font-bold">{error}</p>
-                <button onClick={generateInsights} className="text-indigo-600 underline text-sm font-medium">Try Again</button>
+                <button
+                  onClick={generateInsights}
+                  className="text-indigo-600 underline text-sm font-medium"
+                >
+                  Try Again
+                </button>
               </div>
             ) : (
               <div className="grid gap-4">
                 {insights.map((insight, index) => (
-                  <motion.div 
+                  <motion.div
                     key={index}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -182,15 +194,24 @@ Return the response PURELY as a JSON array of 3 objects with the following schem
                     </div>
                     <div className="flex-1">
                       <div className="flex justify-between items-start mb-2">
-                        <h4 className="font-bold text-slate-900 leading-tight">{insight.title}</h4>
-                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md whitespace-nowrap ml-4 ${
-                          insight.impact === 'Critical' ? 'bg-rose-100 text-rose-700' : 
-                          insight.impact === 'High Impact' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'
-                        }`}>
+                        <h4 className="font-bold text-slate-900 leading-tight">
+                          {insight.title}
+                        </h4>
+                        <span
+                          className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md whitespace-nowrap ml-4 ${
+                            insight.impact === "Critical"
+                              ? "bg-rose-100 text-rose-700"
+                              : insight.impact === "High Impact"
+                                ? "bg-amber-100 text-amber-700"
+                                : "bg-indigo-100 text-indigo-700"
+                          }`}
+                        >
                           {insight.impact}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-600 leading-relaxed font-medium">{insight.description}</p>
+                      <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                        {insight.description}
+                      </p>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-[#6366F1] transition-colors self-center ml-2" />
                   </motion.div>
@@ -204,7 +225,7 @@ Return the response PURELY as a JSON array of 3 objects with the following schem
                   <Zap className="w-4 h-4" />
                   Apply Recommended Fixes
                 </button>
-                <button 
+                <button
                   onClick={generateInsights}
                   className="px-6 py-4 bg-slate-200 text-slate-700 rounded-2xl text-sm font-bold hover:bg-slate-300 transition-all flex items-center justify-center gap-2"
                 >
