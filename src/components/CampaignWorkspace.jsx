@@ -29,7 +29,7 @@ import {
   Pencil,
   Save,
 } from "lucide-react";
-import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 import {
   sendCampaign as apiSendCampaign,
   buildSendTime,
@@ -104,8 +104,8 @@ export default function CampaignWorkspace() {
 
     try {
       const apiKeyStr =
-        import.meta.env.VITE_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
-      const ai = new GoogleGenAI({ apiKey: apiKeyStr });
+        import.meta.env.VITE_OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY || "";
+      const ai = new OpenAI({ apiKey: apiKeyStr, dangerouslyAllowBrowser: true });
 
       addLog(
         "Authenticating and fetching customer cohort data from CampaignX API...",
@@ -191,15 +191,14 @@ export default function CampaignWorkspace() {
         }
       `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-        },
+      const response = await ai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.5,
       });
 
-      const result = JSON.parse(response.text || "{}");
+      const result = JSON.parse(response.choices[0].message.content || "{}");
 
       setCampaign(result);
       setEmailSubject(result.subject || "");
@@ -232,8 +231,8 @@ export default function CampaignWorkspace() {
 
     try {
       const apiKeyStr =
-        import.meta.env.VITE_GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "";
-      const ai = new GoogleGenAI({ apiKey: apiKeyStr });
+        import.meta.env.VITE_OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY || "";
+      const ai = new OpenAI({ apiKey: apiKeyStr, dangerouslyAllowBrowser: true });
 
       // 1. AI Demographic Filtering
       addLog(
@@ -260,12 +259,13 @@ export default function CampaignWorkspace() {
 
       let filterFuncString = "(c) => true"; // Fallback
       try {
-        const filterRes = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: filterPrompt,
+        const filterRes = await ai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [{ role: "user", content: filterPrompt }],
+          temperature: 0.2,
         });
         filterFuncString =
-          filterRes.text
+          filterRes.choices[0].message.content
             ?.replace(/`/g, "")
             .replace(/javascript/g, "")
             .trim() || "(c) => true";

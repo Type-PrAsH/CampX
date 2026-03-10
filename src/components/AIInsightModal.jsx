@@ -10,7 +10,7 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react";
-import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 
 export default function AIInsightModal({
   isOpen,
@@ -33,12 +33,12 @@ export default function AIInsightModal({
     setError(null);
 
     try {
-      const settingsKey = localStorage.getItem("gemini_api_key");
-      const envKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const settingsKey = localStorage.getItem("openai_api_key");
+      const envKey = import.meta.env.VITE_OPENAI_API_KEY;
       const apiKey = settingsKey || envKey;
 
       if (!apiKey) {
-        throw new Error("Gemini API Key missing. Please set it in Settings.");
+        throw new Error("OpenAI API Key missing. Please set VITE_OPENAI_API_KEY in your .env file.");
       }
 
       const prompt = `You are a world-class Email Marketing AI analyst. Analyze the following live platform data from a user's recent campaigns and provide EXACTLY 3 actionable, highly specific insights.
@@ -60,19 +60,18 @@ Return the response as a JSON array of exactly 3 objects:
   }
 ]
 The only valid values for impact are: "High Impact", "Medium Impact", "Critical".
-The only valid values for iconType are: "zap", "target", "trending".`;
+The only valid values for iconType are: "zap", "target", "trending".
+Respond ONLY with the JSON array, no extra text.`;
 
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.4,
-        },
+      const ai = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
+      const response = await ai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" },
+        temperature: 0.4,
       });
 
-      const textResponse = response.text || "";
+      const textResponse = response.choices[0].message.content || "";
 
       // Clean potential markdown blocks
       const cleanJson = textResponse
