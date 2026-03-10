@@ -30,6 +30,12 @@ import {
   Save,
 } from "lucide-react";
 import { GoogleGenAI } from "@google/genai";
+import {
+  sendCampaign as apiSendCampaign,
+  buildSendTime,
+  saveCampaignId,
+  getCustomerCohort as apiGetCustomerCohort,
+} from "../services/campaignx";
 
 import ScheduleSection from "./ScheduleSection";
 
@@ -303,11 +309,8 @@ export default function CampaignWorkspace() {
         return;
       }
 
-      // 3. Send Campaign via API
+      // 3. Dispatch Campaign via Service Layer
       addLog("Dispatching campaign to CampaignX API...", "loading");
-      const API_URL =
-        import.meta.env.VITE_CAMPAIGNX_API_URL ||
-        "https://campaignx.inxiteout.ai";
       const API_KEY = import.meta.env.VITE_CAMPAIGNX_API_KEY;
 
       if (!API_KEY) {
@@ -320,66 +323,27 @@ export default function CampaignWorkspace() {
         return;
       }
 
-      // Format DD:MM:YY HH:MM:SS from schedule state
-      let formattedSendTime = "";
+      // Build and validate send time
+      const formattedSendTime = buildSendTime(schedule);
+      addLog(`Formatted send time for API: ${formattedSendTime}`, "info");
+
       try {
-        let d = new Date(`${schedule.date}T${schedule.time}:00`);
-        // If the parsed date is in the past (e.g., default 09:00 AM on current day), bump it to 5 mins from now
-        if (d.getTime() < Date.now()) {
-          d = new Date(Date.now() + 5 * 60000); // add 5 minutes
-          addLog(
-            `Scheduled time was in the past. Automatically adjusting to +5 minutes from now.`,
-            "info",
-          );
-        }
+        const campaignId = await apiSendCampaign({
+          subject: emailSubject || campaign.subject,
+          body: emailBody || campaign.body,
+          list_customer_ids: target_customer_ids,
+          send_time: formattedSendTime,
+        });
 
-        const day = String(d.getDate()).padStart(2, "0");
-        const month = String(d.getMonth() + 1).padStart(2, "0");
-        const year = String(d.getFullYear()).slice(-2);
-        const hours = String(d.getHours()).padStart(2, "0");
-        const minutes = String(d.getMinutes()).padStart(2, "0");
-        const seconds = String(d.getSeconds()).padStart(2, "0");
-        formattedSendTime = `${day}:${month}:${year} ${hours}:${minutes}:${seconds}`;
-        addLog(`Formatted send time for API: ${formattedSendTime}`, "info");
-      } catch (e) {
-        // Fallback for emergency formatting - 5 mins from now
-        const fd = new Date(Date.now() + 5 * 60000);
-        const day = String(fd.getDate()).padStart(2, "0");
-        const month = String(fd.getMonth() + 1).padStart(2, "0");
-        const year = String(fd.getFullYear()).slice(-2);
-        const hours = String(fd.getHours()).padStart(2, "0");
-        const minutes = String(fd.getMinutes()).padStart(2, "0");
-        const seconds = String(fd.getSeconds()).padStart(2, "0");
-        formattedSendTime = `${day}:${month}:${year} ${hours}:${minutes}:${seconds}`;
-      }
-
-      const sendPayload = {
-        subject: campaign.subject,
-        body: campaign.body,
-        list_customer_ids: target_customer_ids,
-        send_time: formattedSendTime,
-      };
-
-      const sendRes = await fetch(`${API_URL}/api/v1/send_campaign`, {
-        method: "POST",
-        headers: {
-          "X-API-Key": API_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(sendPayload),
-      });
-
-      if (sendRes.ok) {
-        const result = await sendRes.json();
+        // saveCampaignId is called inside apiSendCampaign — also log it
         addLog(
-          `Campaign Launched Successfully! Campaign ID: ${result.campaign_id || "UNKNOWN"}`,
+          `Campaign Launched Successfully! Campaign ID: ${campaignId}`,
           "success",
         );
         setIsApproved(true);
         setTimeout(() => setIsApproved(false), 8000);
-      } else {
-        const errText = await sendRes.text();
-        addLog(`API Launch Failed: ${sendRes.status} - ${errText}`, "info");
+      } catch (dispatchErr) {
+        addLog(`API Launch Failed: ${dispatchErr.message}`, "info");
       }
     } catch (err) {
       console.error(err);
