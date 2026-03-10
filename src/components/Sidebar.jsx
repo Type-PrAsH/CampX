@@ -1,24 +1,28 @@
-import React from 'react';
-import { LayoutDashboard, TrendingUp, Mail, PlusCircle, LogOut, Settings, HelpCircle, Flame } from 'lucide-react';
-import { View } from '../types';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
+import React from "react";
+import {
+  LayoutDashboard,
+  TrendingUp,
+  Mail,
+  PlusCircle,
+  LogOut,
+  Settings,
+  HelpCircle,
+  Flame,
+} from "lucide-react";
 
-function cn(...inputs: ClassValue[]) {
+import { clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-interface SidebarProps {
-  currentView: View;
-  onViewChange: (view: View) => void;
-}
-
-export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
+export default function Sidebar({ currentView, onViewChange }) {
   const navItems = [
-    { id: 'campaign', label: 'New Campaign', icon: PlusCircle },
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'trends', label: 'Trends', icon: TrendingUp },
-    { id: 'activity', label: 'Email Activity', icon: Mail },
+    { id: "campaign", label: "New Campaign", icon: PlusCircle },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "trends", label: "Trends", icon: TrendingUp },
+    { id: "activity", label: "Email Activity", icon: Mail },
   ];
 
   return (
@@ -38,15 +42,20 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
           {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => onViewChange(item.id as View)}
+              onClick={() => onViewChange(item.id)}
               className={cn(
                 "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all",
                 currentView === item.id
                   ? "bg-indigo-50 text-[#6366F1] shadow-sm"
-                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900",
               )}
             >
-              <item.icon className={cn("w-4 h-4", currentView === item.id ? "text-[#6366F1]" : "text-slate-400")} />
+              <item.icon
+                className={cn(
+                  "w-4 h-4",
+                  currentView === item.id ? "text-[#6366F1]" : "text-slate-400",
+                )}
+              />
               {item.label}
             </button>
           ))}
@@ -54,13 +63,13 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
       </div>
 
       <div className="mt-auto p-6 border-t border-slate-200 space-y-1">
-        <button 
-          onClick={() => onViewChange('settings')}
+        <button
+          onClick={() => onViewChange("settings")}
           className={cn(
             "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold transition-all",
-            currentView === 'settings' 
+            currentView === "settings"
               ? "bg-slate-100 text-slate-900 shadow-sm"
-              : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
           )}
         >
           <Settings className="w-4 h-4 text-slate-400" />
