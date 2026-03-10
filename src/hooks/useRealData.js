@@ -1,5 +1,10 @@
-// Hot reload trigger
+// CampaignX API service layer
 import { useState, useEffect } from "react";
+import {
+  getReport,
+  getCampaignHistory,
+  aggregateReportMetrics,
+} from "../services/campaignx";
 
 export function useRealData() {
   const [reports, setReports] = useState([]);
@@ -28,57 +33,31 @@ export function useRealData() {
     async function fetchReports() {
       setIsLoading(true);
       try {
-        const historyJson = localStorage.getItem("campaignx_history");
-        const campaignIds = historyJson ? JSON.parse(historyJson) : [];
+        const campaignIds = getCampaignHistory();
 
         if (campaignIds.length === 0) {
           setIsLoading(false);
           return;
         }
 
-        const API_URL =
-          import.meta.env.VITE_CAMPAIGNX_API_URL ||
-          "https://campaignx.inxiteout.ai";
-        const API_KEY = import.meta.env.VITE_CAMPAIGNX_API_KEY;
-
         let allEvents = [];
 
         const reportPromises = campaignIds.map(async (cid) => {
           try {
-            const res = await fetch(
-              `${API_URL}/api/v1/get_report?campaign_id=${cid}`,
-              {
-                headers: { "X-API-Key": API_KEY },
-              },
-            );
-            if (res.ok) {
-              const data = await res.json();
-              console.log("ACTUAL API REPORT SCHEMA: ", JSON.stringify(data, null, 2));
-              const events = data.data || [];
-              allEvents = [...allEvents, ...events];
+            const data = await getReport(cid);
+            const agg = aggregateReportMetrics(data);
+            allEvents = [...allEvents, ...agg.rawEvents];
 
-              let sent = 0,
-                opens = 0,
-                clicks = 0,
-                unsubs = 0;
-              events.forEach((ev) => {
-                sent++;
-                if (ev.Open === "Y" || ev.EO === "Y" || ev.open === "Y" || ev.eo === "Y") opens++;
-                if (ev.Click === "Y" || ev.EC === "Y" || ev.click === "Y" || ev.ec === "Y") clicks++;
-                if (ev.Unsubscribe === "Y" || ev.EU === "Y" || ev.unsubscribe === "Y" || ev.eu === "Y") unsubs++;
-              });
-
-              return {
-                campaign_id: cid,
-                total_sent: sent,
-                opens,
-                clicks,
-                unsubscribes: unsubs,
-                open_rate: sent > 0 ? (opens / sent) * 100 : 0,
-                click_rate: sent > 0 ? (clicks / sent) * 100 : 0,
-                unsubscribe_rate: sent > 0 ? (unsubs / sent) * 100 : 0,
-              };
-            }
+            return {
+              campaign_id: cid,
+              total_sent: agg.sent,
+              opens: agg.opens,
+              clicks: agg.clicks,
+              unsubscribes: agg.unsubs,
+              open_rate: agg.openRate,
+              click_rate: agg.clickRate,
+              unsubscribe_rate: agg.unsubRate,
+            };
           } catch (e) {
             console.error("Failed to fetch report for", cid, e);
           }
