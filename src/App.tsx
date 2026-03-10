@@ -4,6 +4,7 @@ import Dashboard from './components/Dashboard';
 import Trends from './components/Trends';
 import EmailActivity from './components/EmailActivity';
 import CampaignWorkspace from './components/CampaignWorkspace';
+import Settings from './components/Settings';
 import { View } from './types';
 import { AnimatePresence, motion } from 'motion/react';
 
@@ -20,6 +21,8 @@ export default function App() {
         return <EmailActivity />;
       case 'campaign':
         return <CampaignWorkspace />;
+      case 'settings':
+        return <Settings />;
       default:
         return <Dashboard />;
     }
