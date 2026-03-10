@@ -26,6 +26,8 @@ import {
   MessageSquare,
   AlertCircle,
   Loader2,
+  Pencil,
+  Save,
 } from "lucide-react";
 import { GoogleGenAI } from "@google/genai";
 
@@ -58,6 +60,11 @@ export default function CampaignWorkspace() {
   const logEndRef = useRef(null);
 
   const [rawCohort, setRawCohort] = useState([]);
+
+  // Edit Email state
+  const [isEditingEmail, setIsEditingEmail] = useState(false);
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
 
   const addLog = (message, status = "info") => {
     setLogs((prev) => [
@@ -189,6 +196,9 @@ export default function CampaignWorkspace() {
       const result = JSON.parse(response.text || "{}");
 
       setCampaign(result);
+      setEmailSubject(result.subject || "");
+      setEmailBody(result.body || "");
+      setIsEditingEmail(false);
       addLog("Email content generated successfully.", "success");
       addLog("Waiting for human approval...", "info");
     } catch (err) {
@@ -652,13 +662,41 @@ export default function CampaignWorkspace() {
                     React.createElement(
                       "div",
                       {
-                        className:
-                          "flex items-center gap-2 text-slate-900 font-bold uppercase tracking-wider text-sm",
+                        className: "flex items-center justify-between",
                       } /*#__PURE__*/,
-                      React.createElement(Mail, {
-                        className: "w-5 h-5 text-[#6366F1]",
-                      }) /*#__PURE__*/,
-                      React.createElement("h3", null, "Email Preview"),
+                      React.createElement(
+                        "div",
+                        {
+                          className:
+                            "flex items-center gap-2 text-slate-900 font-bold uppercase tracking-wider text-sm",
+                        } /*#__PURE__*/,
+                        React.createElement(Mail, {
+                          className: "w-5 h-5 text-[#6366F1]",
+                        }) /*#__PURE__*/,
+                        React.createElement("h3", null, "Email Preview"),
+                      ) /*#__PURE__*/,
+                      React.createElement(
+                        "button",
+                        {
+                          onClick: () => {
+                            if (isEditingEmail) {
+                              setCampaign((prev) => ({ ...prev, subject: emailSubject, body: emailBody }));
+                              setIsEditingEmail(false);
+                            } else {
+                              setEmailSubject(campaign.subject || "");
+                              setEmailBody(campaign.body || "");
+                              setIsEditingEmail(true);
+                            }
+                          },
+                          className:
+                            "flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg transition-all " +
+                            (isEditingEmail
+                              ? "bg-[#6366F1] text-white shadow-md hover:bg-[#4F46E5]"
+                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"),
+                        },
+                        React.createElement(isEditingEmail ? Save : Pencil, { className: "w-3.5 h-3.5" }),
+                        isEditingEmail ? "Save Changes" : "Edit Email",
+                      ),
                     ) /*#__PURE__*/,
                     React.createElement(
                       "div",
@@ -677,11 +715,19 @@ export default function CampaignWorkspace() {
                           },
                           "Subject",
                         ) /*#__PURE__*/,
-                        React.createElement(
-                          "p",
-                          { className: "text-lg font-bold text-slate-900" },
-                          campaign.subject,
-                        ),
+                        isEditingEmail
+                          ? React.createElement("input", {
+                              type: "text",
+                              value: emailSubject,
+                              onChange: (e) => setEmailSubject(e.target.value),
+                              className:
+                                "w-full px-3 py-2 text-lg font-bold text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#6366F1] focus:border-transparent outline-none transition-all bg-white",
+                            })
+                          : React.createElement(
+                              "p",
+                              { className: "text-lg font-bold text-slate-900" },
+                              campaign.subject,
+                            ),
                       ) /*#__PURE__*/,
                       React.createElement("div", {
                         className: "h-px bg-slate-200 w-full",
@@ -697,14 +743,22 @@ export default function CampaignWorkspace() {
                           },
                           "Body",
                         ) /*#__PURE__*/,
-                        React.createElement(
-                          "div",
-                          {
-                            className:
-                              "text-slate-700 whitespace-pre-wrap leading-relaxed font-medium",
-                          },
-                          campaign.body,
-                        ),
+                        isEditingEmail
+                          ? React.createElement("textarea", {
+                              value: emailBody,
+                              onChange: (e) => setEmailBody(e.target.value),
+                              rows: 10,
+                              className:
+                                "w-full px-3 py-2 text-slate-700 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#6366F1] focus:border-transparent outline-none transition-all resize-none leading-relaxed font-medium bg-white",
+                            })
+                          : React.createElement(
+                              "div",
+                              {
+                                className:
+                                  "text-slate-700 whitespace-pre-wrap leading-relaxed font-medium",
+                              },
+                              campaign.body,
+                            ),
                       ),
                     ),
                   ),
