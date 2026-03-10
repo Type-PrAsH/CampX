@@ -1,4 +1,4 @@
-export type View = 'dashboard' | 'trends' | 'activity' | 'campaign';
+export type View = 'dashboard' | 'trends' | 'activity' | 'campaign' | 'settings';
 
 export interface ScheduleSettings {
   date: string;

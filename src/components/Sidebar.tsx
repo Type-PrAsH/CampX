@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, TrendingUp, Mail, PlusCircle, LogOut, Settings, HelpCircle } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Mail, PlusCircle, LogOut, Settings, HelpCircle, Flame } from 'lucide-react';
 import { View } from '../types';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -24,11 +24,14 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
   return (
     <div className="w-64 bg-white border-r border-slate-200 h-screen flex flex-col sticky top-0">
       <div className="p-6">
-        <div className="flex items-center gap-2 mb-8">
-          <div className="w-8 h-8 bg-[#6366F1] rounded-lg flex items-center justify-center shadow-lg shadow-indigo-100">
-            <Mail className="text-white w-5 h-5" />
+        <div className="flex items-center gap-3 mb-8 group cursor-pointer">
+          <div className="relative w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center shadow-lg shadow-indigo-200 overflow-hidden">
+            <div className="absolute inset-0 bg-white/10 group-hover:bg-white/0 transition-colors" />
+            <Flame className="w-5 h-5 text-white transform group-hover:scale-110 group-hover:-rotate-12 transition-all duration-300" />
           </div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">CampaignAI</h1>
+          <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-700 to-purple-600 tracking-tight">
+            CampX
+          </h1>
         </div>
 
         <nav className="space-y-1">
@@ -51,7 +54,15 @@ export default function Sidebar({ currentView, onViewChange }: SidebarProps) {
       </div>
 
       <div className="mt-auto p-6 border-t border-slate-200 space-y-1">
-        <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-all">
+        <button 
+          onClick={() => onViewChange('settings')}
+          className={cn(
+            "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold transition-all",
+            currentView === 'settings' 
+              ? "bg-slate-100 text-slate-900 shadow-sm"
+              : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+          )}
+        >
           <Settings className="w-4 h-4 text-slate-400" />
           Settings
         </button>

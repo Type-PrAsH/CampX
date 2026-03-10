@@ -134,8 +134,12 @@ export default function CampaignWorkspace() {
       addLog('Waiting for human approval...', 'info');
     } catch (err: any) {
       console.error(err);
-      setError(`Failed to generate campaign: ${err.message || JSON.stringify(err)}`);
-      addLog(`Error during generation: ${err.message}`, 'info');
+      let errMsg = err.message || JSON.stringify(err);
+      if (errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED')) {
+        errMsg = "Gemini API Free Tier Quota Exceeded (429). Please update your API Key in Settings or wait until tomorrow.";
+      }
+      setError(`Failed to generate campaign: ${errMsg}`);
+      addLog(`Error during generation: ${errMsg}`, 'info');
     } finally {
       setIsGenerating(false);
     }
@@ -265,7 +269,19 @@ export default function CampaignWorkspace() {
 
       if (sendRes.ok) {
         const result = await sendRes.json();
-        addLog(`Campaign Launched Successfully! Campaign ID: ${result.campaign_id || 'UNKNOWN'}`, 'success');
+        const cid = result.campaign_id;
+        
+        // Save ID to local storage for Dashboard analytics
+        if (cid) {
+          const historyJson = localStorage.getItem('campaignx_history');
+          const history = historyJson ? JSON.parse(historyJson) : [];
+          if (!history.includes(cid)) {
+            history.push(cid);
+            localStorage.setItem('campaignx_history', JSON.stringify(history));
+          }
+        }
+
+        addLog(`Campaign Launched Successfully! Campaign ID: ${cid || 'UNKNOWN'}`, 'success');
         setIsApproved(true);
         setTimeout(() => setIsApproved(false), 8000);
       } else {

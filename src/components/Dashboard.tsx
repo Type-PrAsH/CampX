@@ -4,12 +4,29 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   BarChart, Bar, Cell, PieChart, Pie 
 } from 'recharts';
-import { TrendingUp, TrendingDown, Sparkles, ArrowUpRight } from 'lucide-react';
-import { dashboardMetrics, openRateData, clickRateBySegment, engagementTrend } from '../mockData';
+import { TrendingUp, TrendingDown, Sparkles, ArrowUpRight, Loader2 } from 'lucide-react';
 import AIInsightModal from './AIInsightModal';
+import { useRealData } from '../hooks/useRealData';
 
 export default function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const { metrics, chartData, isLoading } = useRealData();
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full w-full items-center justify-center p-8 text-indigo-600">
+        <Loader2 className="w-12 h-12 animate-spin" />
+      </div>
+    );
+  }
+
+  // Map real calculated metrics back into the cards
+  const realDashboardMetrics = [
+    { label: 'Total Sent', value: metrics.totalSent, change: '', trend: 'up' },
+    { label: 'Open Rate', value: metrics.openRate, change: '', trend: metrics.openRateTrend },
+    { label: 'Click Rate', value: metrics.clickRate, change: '', trend: metrics.clickRateTrend },
+    { label: 'Unsubscribes', value: metrics.unsubscribes, change: '', trend: 'down' },
+  ];
 
   return (
     <motion.div 
@@ -34,7 +51,7 @@ export default function Dashboard() {
 
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {dashboardMetrics.map((metric: any, idx: number) => (
+        {realDashboardMetrics.map((metric: any, idx: number) => (
           <motion.div
             key={metric.label}
             initial={{ opacity: 0, scale: 0.95 }}
@@ -62,11 +79,11 @@ export default function Dashboard() {
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all duration-200">
           <div className="flex items-center justify-between mb-6">
             <h4 className="text-lg font-bold text-slate-900">Open Rate Over Time</h4>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Last 7 Days</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Live Data</span>
           </div>
           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={openRateData}>
+            <ResponsiveContainer width="100%" height={256}>
+              <LineChart data={chartData.openRateData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#888' }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#888' }} />
@@ -91,11 +108,11 @@ export default function Dashboard() {
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all duration-200">
           <div className="flex items-center justify-between mb-6">
             <h4 className="text-lg font-bold text-slate-900">Click Rate by Segment</h4>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Campaign Average</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Live Data</span>
           </div>
           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={clickRateBySegment} layout="vertical">
+            <ResponsiveContainer width="100%" height={256}>
+              <BarChart data={chartData.clickRateBySegment} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
                 <XAxis type="number" hide />
                 <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#888' }} width={80} />
@@ -104,7 +121,7 @@ export default function Dashboard() {
                   contentStyle={{ backgroundColor: '#fff', borderRadius: '12px', border: '1px solid #e5e7eb' }}
                 />
                 <Bar dataKey="value" fill="#6366F1" radius={[0, 4, 4, 0]} barSize={20}>
-                  {clickRateBySegment.map((entry: any, index: number) => (
+                  {chartData.clickRateBySegment.map((entry: any, index: number) => (
                     <Cell key={`cell-${index}`} fill={index === 3 ? '#6366F1' : '#c7d2fe'} />
                   ))}
                 </Bar>
@@ -120,13 +137,13 @@ export default function Dashboard() {
             <div className="flex items-center gap-2">
               <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full uppercase tracking-wider">
                 <ArrowUpRight className="w-3 h-3" />
-                +12% vs Last Month
+                Live API 
               </span>
             </div>
           </div>
           <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={engagementTrend}>
+            <ResponsiveContainer width="100%" height={256}>
+              <LineChart data={chartData.engagementTrend}>
                 <defs>
                   <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#6366F1" stopOpacity={0.1}/>
@@ -143,7 +160,7 @@ export default function Dashboard() {
                   stroke="#6366F1" 
                   strokeWidth={3} 
                   dot={false}
-                  activeDot={{ r: 6, strokeWidth: 0 }}
+                  activeDot={{ r: 6, fill: '#6366F1', strokeWidth: 0 }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -151,7 +168,12 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <AIInsightModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      <AIInsightModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        metrics={metrics}
+        chartData={chartData}
+      />
     </motion.div>
   );
 }
