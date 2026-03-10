@@ -13,7 +13,7 @@ export default function Settings() {
   const [formData, setFormData] = useState({
     campaignxUrl: "",
     campaignxKey: "",
-    geminiKey: "",
+    groqKey: "",
   });
 
   const [isSaved, setIsSaved] = useState(false);
@@ -22,7 +22,7 @@ export default function Settings() {
     // Load from localStorage or fallback to env vars (for initial hydration)
     const localUrl = localStorage.getItem("campaignx_api_url");
     const localKey = localStorage.getItem("campaignx_api_key");
-    const localGemini = localStorage.getItem("gemini_api_key");
+    const localGroq = localStorage.getItem("groq_api_key");
 
     setFormData({
       campaignxUrl:
@@ -30,7 +30,7 @@ export default function Settings() {
         import.meta.env.VITE_CAMPAIGNX_API_URL ||
         "https://campaignx.inxiteout.ai",
       campaignxKey: localKey || import.meta.env.VITE_CAMPAIGNX_API_KEY || "",
-      geminiKey: localGemini || import.meta.env.VITE_GEMINI_API_KEY || "",
+      groqKey: localGroq || import.meta.env.VITE_GROQ_API_KEY || "",
     });
   }, []);
 
@@ -42,7 +42,7 @@ export default function Settings() {
   const handleSave = () => {
     localStorage.setItem("campaignx_api_url", formData.campaignxUrl);
     localStorage.setItem("campaignx_api_key", formData.campaignxKey);
-    localStorage.setItem("gemini_api_key", formData.geminiKey);
+    localStorage.setItem("groq_api_key", formData.groqKey);
     setIsSaved(true);
 
     // Auto-hide success message after 3 seconds
@@ -141,17 +141,17 @@ export default function Settings() {
 
           <hr className="border-slate-100" />
 
-          {/* Gemini AI API */}
+          {/* Groq AI API */}
           <div className="space-y-4">
             <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-500" />
-              Google Gemini Intelligence
+              <Sparkles className="w-4 h-4 text-emerald-500" />
+              Groq Intelligence
             </h4>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2 lg:col-span-2">
                 <label className="text-sm font-semibold text-slate-700">
-                  Gemini API Key
+                  Groq API Key
                 </label>
                 <div className="relative max-w-xl">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -159,11 +159,11 @@ export default function Settings() {
                   </div>
                   <input
                     type="password"
-                    name="geminiKey"
-                    value={formData.geminiKey}
+                    name="groqKey"
+                    value={formData.groqKey}
                     onChange={handleChange}
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all font-mono text-sm"
-                    placeholder="AIzaSy..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all font-mono text-sm"
+                    placeholder="gsk_..."
                   />
                 </div>
                 <p className="text-xs text-slate-500 mt-2 font-medium">

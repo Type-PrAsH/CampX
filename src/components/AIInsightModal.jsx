@@ -10,7 +10,7 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react";
-import { GoogleGenAI } from "@google/genai";
+import Groq from "groq-sdk";
 
 export default function AIInsightModal({
   isOpen,
@@ -33,12 +33,12 @@ export default function AIInsightModal({
     setError(null);
 
     try {
-      const settingsKey = localStorage.getItem("gemini_api_key");
-      const envKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const settingsKey = localStorage.getItem("groq_api_key");
+      const envKey = import.meta.env.VITE_GROQ_API_KEY;
       const apiKey = settingsKey || envKey;
 
       if (!apiKey) {
-        throw new Error("Gemini API Key missing. Please set it in Settings.");
+        throw new Error("Groq API Key missing. Please set it in Settings.");
       }
 
       const prompt = `You are a world-class Email Marketing AI analyst. Analyze the following live platform data from a user's recent campaigns and provide EXACTLY 3 actionable, highly specific insights.
@@ -62,17 +62,15 @@ Return the response as a JSON array of exactly 3 objects:
 The only valid values for impact are: "High Impact", "Medium Impact", "Critical".
 The only valid values for iconType are: "zap", "target", "trending".`;
 
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          temperature: 0.4,
-        },
+      const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
+      const response = await groq.chat.completions.create({
+        messages: [{ role: "user", content: prompt }],
+        model: "llama-3.3-70b-versatile",
+        temperature: 0.4,
+        response_format: { type: "json_object" }
       });
 
-      const textResponse = response.text || "";
+      const textResponse = response.choices[0].message.content || "";
 
       // Clean potential markdown blocks
       const cleanJson = textResponse
@@ -154,7 +152,7 @@ The only valid values for iconType are: "zap", "target", "trending".`;
               Campaign Insights
             </h3>
             <p className="text-indigo-100 mt-2 text-sm max-w-md leading-relaxed font-medium">
-              Gemini AI is analyzing your real-time performance data to generate
+              Groq AI is analyzing your real-time performance data to generate
               custom optimization strategies.
             </p>
           </div>
