@@ -1,0 +1,40 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+body {
+  font-family: 'Inter', sans-serif;
+}
+
+@layer utilities {
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #3f3f46;
+    border-radius: 10px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #52525b;
+  }
+}
+
+/* ─── Dark Mode Hierarchy ─── */
+
+/* App shell: very dark navy background */
+.dark body {
+  background-color: #0b1120;
+}
+/* Main content area */
+.dark main {
+  background-color: #0b1120;
+}
+/* Sidebar: slightly lighter than background */
+.dark aside,
+.dark nav {
+  background-color: #0f172a;
+}
+
