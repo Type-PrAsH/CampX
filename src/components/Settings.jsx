@@ -7,6 +7,7 @@ import {
   Server,
   Sparkles,
   CheckCircle2,
+  Workflow,
 } from "lucide-react";
 
 export default function Settings() {
@@ -14,6 +15,7 @@ export default function Settings() {
     campaignxUrl: "",
     campaignxKey: "",
     groqKey: "",
+    stitchKey: "",
   });
 
   const [isSaved, setIsSaved] = useState(false);
@@ -23,6 +25,7 @@ export default function Settings() {
     const localUrl = localStorage.getItem("campaignx_api_url");
     const localKey = localStorage.getItem("campaignx_api_key");
     const localGroq = localStorage.getItem("groq_api_key");
+    const localStitch = localStorage.getItem("stitch_api_key");
 
     setFormData({
       campaignxUrl:
@@ -31,6 +34,7 @@ export default function Settings() {
         "https://campaignx.inxiteout.ai",
       campaignxKey: localKey || import.meta.env.VITE_CAMPAIGNX_API_KEY || "",
       groqKey: localGroq || import.meta.env.VITE_GROQ_API_KEY || "",
+      stitchKey: localStitch || import.meta.env.VITE_STITCH_API_KEY || "",
     });
   }, []);
 
@@ -43,6 +47,7 @@ export default function Settings() {
     localStorage.setItem("campaignx_api_url", formData.campaignxUrl);
     localStorage.setItem("campaignx_api_key", formData.campaignxKey);
     localStorage.setItem("groq_api_key", formData.groqKey);
+    localStorage.setItem("stitch_api_key", formData.stitchKey);
     setIsSaved(true);
 
     // Auto-hide success message after 3 seconds
@@ -169,6 +174,40 @@ export default function Settings() {
                 <p className="text-xs text-slate-500 mt-2 font-medium">
                   Used for autonomous campaign generation, audience filtering,
                   and intelligent analytics generation.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <hr className="border-slate-100" />
+
+          {/* Stitch API */}
+          <div className="space-y-4">
+            <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+              <Workflow className="w-4 h-4 text-purple-500" />
+              Stitch Integration
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2 lg:col-span-2">
+                <label className="text-sm font-semibold text-slate-700">
+                  Stitch API Key
+                </label>
+                <div className="relative max-w-xl">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Key className="w-4 h-4 text-slate-400" />
+                  </div>
+                  <input
+                    type="password"
+                    name="stitchKey"
+                    value={formData.stitchKey}
+                    onChange={handleChange}
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-all font-mono text-sm"
+                    placeholder="Enter your Stitch API Key"
+                  />
+                </div>
+                <p className="text-xs text-slate-500 mt-2 font-medium">
+                  Used for orchestrating unified data pipelines and third-party interactions.
                 </p>
               </div>
             </div>
