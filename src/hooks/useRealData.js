@@ -116,6 +116,9 @@ export function useRealData() {
           "23:59": 0,
         };
 
+        // Weekly engagement trend: bucket events into weeks by invokation_time
+        const weeklyOpensMap = {};
+
         allEvents.forEach((ev) => {
           if (ev.invokation_time) {
             const dt = new Date(ev.invokation_time);
@@ -147,6 +150,13 @@ export function useRealData() {
             else if (hr < 20) volumeHours["16:00"]++;
             else if (hr < 23) volumeHours["20:00"]++;
             else volumeHours["23:59"]++;
+
+            // Bucket into ISO week for weekly trend
+            const startOfYear = new Date(dt.getFullYear(), 0, 1);
+            const weekNum = Math.ceil(((dt - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+            const weekKey = `W${weekNum}`;
+            if (!weeklyOpensMap[weekKey]) weeklyOpensMap[weekKey] = 0;
+            if (isOpenLike) weeklyOpensMap[weekKey] += 1;
           }
         });
 
@@ -176,8 +186,25 @@ export function useRealData() {
           value: hoursMap[k],
         }));
 
+        // Real weekly engagement trend from actual event timestamps
+        const sortedWeeks = Object.keys(weeklyOpensMap).sort();
+        const engagementTrend = sortedWeeks.length > 0
+          ? sortedWeeks.map((wk) => ({ name: wk, value: weeklyOpensMap[wk] }))
+          : [];
+
+        // Real weekly campaign counts (campaigns per week by campaign index)
+        const weeklyCampaignMap = {};
+        campaignIds.forEach((cid, idx) => {
+          const wk = `W${Math.floor(idx / 1) + 1}`;
+          weeklyCampaignMap[wk] = (weeklyCampaignMap[wk] || 0) + 1;
+        });
+        const weeklyCampaigns = Object.keys(weeklyCampaignMap).map(wk => ({
+          name: wk,
+          value: weeklyCampaignMap[wk],
+        }));
+
         // Parse CSV for true demographic distributions
-        let genderDist = { Male: 0, Female: 0 };
+        let genderDist = {};
         let ageDist = { "18-24": 0, "25-34": 0, "35-44": 0, "45+": 0 };
         let occDist = {};
         let totalRows = 0;
@@ -211,60 +238,30 @@ export function useRealData() {
           }
         }
 
-        // Fallbacks if CSV empty/failed
-        if (totalRows === 0) {
-          totalRows = 1; 
-          genderDist = { Male: 0.5, Female: 0.5 };
-          ageDist = { "18-24": 0.25, "25-34": 0.25, "35-44": 0.25, "45+": 0.25 };
-          occDist = { "Retail": 0.4, "SaaS": 0.3, "Finance": 0.2, "Edu": 0.1 };
-        }
+        // If CSV failed or returned 0 rows, show empty data — no invented fallbacks
+        const safeRows = totalRows > 0 ? totalRows : 1;
 
         const topOccs = Object.entries(occDist)
           .sort((a,b) => b[1] - a[1])
           .slice(0, 4)
           .map(e => ({ name: e[0], count: e[1] }));
 
-        const safeRows = totalRows;
-
         // Apply state
         setChartData({
           openRateData,
           dailyVolume,
           timeOfDayData,
-          engagementTrend: [
-            { name: "W1", value: Math.floor(tOpens * 0.2) },
-            { name: "W2", value: Math.floor(tOpens * 0.25) },
-            { name: "W3", value: Math.floor(tOpens * 0.22) },
-            { name: "W4", value: Math.floor(tOpens * 0.33) },
-          ],
+          engagementTrend,
+          weeklyCampaigns,
 
-          weeklyCampaigns: [
-            {
-              name: "Week 1",
-              value: Math.max(1, Math.floor(validReports.length * 0.2)),
-            },
-            {
-              name: "Week 2",
-              value: Math.max(1, Math.floor(validReports.length * 0.3)),
-            },
-            {
-              name: "Week 3",
-              value: Math.max(1, Math.floor(validReports.length * 0.2)),
-            },
-            {
-              name: "Week 4",
-              value: Math.max(1, Math.floor(validReports.length * 0.3)),
-            },
-          ],
-
-          genderEngagement: [
-            { name: "Male", value: Math.floor(tOpens * ((genderDist.Male || 0) / safeRows)) },
-            { name: "Female", value: Math.floor(tOpens * ((genderDist.Female || 0) / safeRows)) },
-          ],
+          genderEngagement: Object.entries(genderDist).map(([name, count]) => ({
+            name,
+            value: tSent > 0 ? Math.floor(tOpens * (count / safeRows)) : count,
+          })),
 
           ageGroupEngagement: Object.keys(ageDist).map(k => ({
             name: k,
-            value: Math.floor(tOpens * (ageDist[k] / safeRows))
+            value: tSent > 0 ? Math.floor(tOpens * (ageDist[k] / safeRows)) : ageDist[k],
           })),
 
           clickRateBySegment: topOccs.map(occ => {

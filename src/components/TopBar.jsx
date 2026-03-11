@@ -2,24 +2,20 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   Sun, Moon, Bell, Search, UserCircle, 
   Settings, LogOut, CheckCircle2,
-  Sparkles, Terminal, Users, Activity, MessageSquare
+  Sparkles, Terminal, Users, Activity, MessageSquare, TrendingUp, BarChart2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { getCampaignHistory } from '../services/campaignx';
 
-const mockNotifications = [
-  { id: 1, title: "Campaign Dispatched", description: "'Feature Release' successfully sent to 14,200 users.", time: "10m ago", read: false, icon: CheckCircle2, color: "text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10" },
-  { id: 2, title: "AI Strategy Generated", description: "New email drip strategy crafted for 'Churn Risk'.", time: "1h ago", read: false, icon: Sparkles, color: "text-teal-600 bg-teal-50 dark:bg-teal-600/10" },
-  { id: 3, title: "Daily Sync Complete", description: "Synchronized 4,500 new customer records from CRM.", time: "2h ago", read: true, icon: Terminal, color: "text-slate-500 bg-slate-100 dark:bg-slate-800" },
-];
-
-const mockSearchResults = [
-  { id: 'c1', type: 'Campaign', title: 'Product Launch Q3', icon: MessageSquare, route: 'campaign' },
-  { id: 'c2', type: 'Campaign', title: 'Holiday Special Strategy', icon: MessageSquare, route: 'campaign' },
-  { id: 'a1', type: 'Analytics', title: 'Q3 Engagement Report', icon: Activity, route: 'analytics' },
-  { id: 'a2', type: 'Analytics', title: 'Audience Growth Trends', icon: Activity, route: 'analytics' },
-  { id: 'au1', type: 'Audience', title: 'Enterprise Leads Segment', icon: Users, route: 'audience' },
-  { id: 'au2', type: 'Audience', title: 'Churn Risk Users', icon: Users, route: 'audience' },
-  { id: 'l1', type: 'Activity Log', title: 'Recent Dispatches', icon: Terminal, route: 'activity-logs' },
+// Real navigation items for the search bar
+const NAV_SEARCH_ITEMS = [
+  { id: 'n1', type: 'Section', title: 'Dashboard', icon: Activity, route: 'dashboard' },
+  { id: 'n2', type: 'Section', title: 'Campaign Workspace', icon: MessageSquare, route: 'campaign' },
+  { id: 'n3', type: 'Section', title: 'Audience Intelligence', icon: Users, route: 'audience' },
+  { id: 'n4', type: 'Section', title: 'Analytics & Trends', icon: TrendingUp, route: 'trends' },
+  { id: 'n5', type: 'Section', title: 'Agent Activity Logs', icon: Terminal, route: 'activity-logs' },
+  { id: 'n6', type: 'Section', title: 'Settings', icon: Settings, route: 'settings' },
+  { id: 'n7', type: 'Section', title: 'Marketing Copilot', icon: Sparkles, route: 'copilot' },
 ];
 
 export default function TopBar({ isDarkMode, toggleTheme, onNavigate }) {
@@ -28,7 +24,7 @@ export default function TopBar({ isDarkMode, toggleTheme, onNavigate }) {
   const [focusedIndex, setFocusedIndex] = useState(-1);
   
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [notifications, setNotifications] = useState(mockNotifications);
+  const [notifications, setNotifications] = useState([]);
   
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
@@ -38,10 +34,30 @@ export default function TopBar({ isDarkMode, toggleTheme, onNavigate }) {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  // Filter search results
+  // Build real notifications from campaign history in localStorage
+  useEffect(() => {
+    const ids = getCampaignHistory();
+    if (ids.length > 0) {
+      const realNotifications = ids.slice().reverse().slice(0, 5).map((cid, idx) => ({
+        id: cid,
+        title: "Campaign Dispatched",
+        description: `Campaign ${cid} was sent via the CampaignX API.`,
+        time: idx === 0 ? "Recently" : `Earlier`,
+        read: idx > 0,
+        icon: CheckCircle2,
+        color: "text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10",
+      }));
+      setNotifications(realNotifications);
+    }
+  }, []);
+
+  // Filter search results against real nav items
   const filteredResults = searchQuery.trim() === '' 
     ? [] 
-    : mockSearchResults.filter(r => r.title.toLowerCase().includes(searchQuery.toLowerCase()) || r.type.toLowerCase().includes(searchQuery.toLowerCase())).slice(0, 5);
+    : NAV_SEARCH_ITEMS.filter(r => 
+        r.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        r.type.toLowerCase().includes(searchQuery.toLowerCase())
+      ).slice(0, 5);
 
   // Close dropdowns on outside click or Escape
   useEffect(() => {
@@ -101,12 +117,11 @@ export default function TopBar({ isDarkMode, toggleTheme, onNavigate }) {
 
   const handleLogout = () => {
     localStorage.removeItem('campx_profile');
-    // Simulate logout reload
     window.location.reload();
   };
 
   // Load profile summary for top right
-  const [profileSummary, setProfileSummary] = useState({ name: "Sarah Jenkins", role: "Marketing" });
+  const [profileSummary, setProfileSummary] = useState({ name: "User", role: "Member" });
   useEffect(() => {
     const saved = localStorage.getItem('campx_profile');
     if (saved) {
@@ -134,7 +149,7 @@ export default function TopBar({ isDarkMode, toggleTheme, onNavigate }) {
               }}
               onFocus={() => setIsSearchOpen(true)}
               onKeyDown={handleSearchKeyDown}
-              placeholder="Search campaigns, insights, audiences..." 
+              placeholder="Search sections, campaigns, audience..." 
               className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg pl-9 pr-4 py-2 text-sm text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition-all"
             />
           </div>
@@ -219,7 +234,7 @@ export default function TopBar({ isDarkMode, toggleTheme, onNavigate }) {
                   )}
                 </div>
                 <div className="overflow-y-auto overflow-x-hidden flex-1 divide-y divide-slate-100 dark:divide-slate-800/50">
-                  {notifications.map(notification => (
+                  {notifications.length > 0 ? notifications.map(notification => (
                     <div key={notification.id} className={`p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors flex gap-4 ${!notification.read ? 'bg-teal-50/30 dark:bg-teal-900/10' : ''}`}>
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${notification.color}`}>
                         <notification.icon className="w-5 h-5" />
@@ -229,13 +244,14 @@ export default function TopBar({ isDarkMode, toggleTheme, onNavigate }) {
                           <h4 className={`font-bold text-sm truncate ${!notification.read ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300'}`}>{notification.title}</h4>
                           <span className="text-xs font-bold text-slate-400 flex-shrink-0 whitespace-nowrap">{notification.time}</span>
                         </div>
-                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 leading-relaxed">{notification.description}</p>
+                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 leading-relaxed break-all">{notification.description}</p>
                       </div>
                       {!notification.read && <div className="w-2 h-2 rounded-full bg-teal-500 mt-1.5 flex-shrink-0" />}
                     </div>
-                  ))}
-                  {notifications.length === 0 && (
-                     <div className="p-8 text-center text-slate-500 text-sm font-medium">You're all caught up!</div>
+                  )) : (
+                    <div className="p-8 text-center text-slate-500 dark:text-slate-400 text-sm font-medium">
+                      No notifications yet. Dispatch a campaign to see activity here.
+                    </div>
                   )}
                 </div>
               </motion.div>

@@ -15,20 +15,22 @@ import {
   TrendingUp,
   TrendingDown,
   Sparkles,
-  ArrowUpRight,
   Loader2,
   Activity,
-  CheckCircle2,
   Clock,
   Target,
   Zap,
+  Mail,
+  MousePointerClick,
+  UserMinus,
+  Send,
 } from "lucide-react";
 import AIInsightModal from "./AIInsightModal";
 import { useRealData } from "../hooks/useRealData";
 
 export default function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { metrics, chartData, isLoading } = useRealData();
+  const { reports, metrics, chartData, isLoading } = useRealData();
 
   if (isLoading) {
     return (
@@ -38,56 +40,71 @@ export default function Dashboard() {
     );
   }
 
-  // Remap real calculated metrics to match the Enterprise SaaS prompt requirements
+  // All metrics sourced directly from live API data
   const realDashboardMetrics = [
-    { 
-      label: "Total Campaigns Sent", 
-      value: metrics.totalSent, 
-      change: "+12.5%", 
-      trend: "up" 
+    {
+      label: "Total Emails Sent",
+      value: metrics.totalSent,
+      icon: Send,
+      trend: metrics.openRateTrend,
     },
     {
-      label: "AI Generated Leads",
-      value: "2,845", // Simulated for prompt requirement
-      change: "+18.2%",
-      trend: "up",
+      label: "Open Rate",
+      value: metrics.openRate,
+      icon: Mail,
+      trend: metrics.openRateTrend,
     },
     {
-      label: "Engagement Rate",
+      label: "Click Rate",
       value: metrics.clickRate,
-      change: "+2.4%",
+      icon: MousePointerClick,
       trend: metrics.clickRateTrend,
     },
     {
-      label: "AI Accuracy",
-      value: "94.8%", // Simulated
-      change: "+1.2%",
-      trend: "up",
+      label: "Unsubscribe Rate",
+      value: metrics.unsubscribes,
+      icon: UserMinus,
+      trend: parseFloat(metrics.unsubscribes) < 0.5 ? "up" : "down",
     },
   ];
 
-  /* AI Insights Panel Data */
+  // AI Insights derived from real metrics data
+  const bestDay = chartData.openRateData?.reduce(
+    (best, d) => (d.value > (best?.value ?? -1) ? d : best),
+    null
+  );
+  const topSegment = chartData.clickRateBySegment?.[0];
+  const bestTimeOfDay = chartData.timeOfDayData?.reduce(
+    (best, d) => (d.value > (best?.value ?? -1) ? d : best),
+    null
+  );
+
   const aiInsights = [
-    { icon: Target, text: "Audience segment 'SaaS Founders' shows a 25% higher open rate on Tuesday mornings. Consider rescheduling." },
-    { icon: Zap, text: "Campaign 'Q3 Product Update' is underperforming. Recommend regenerating the subject line using AI." },
-    { icon: TrendingUp, text: "Overall engagement is up 12% across your top 3 automated flows." }
+    bestDay && bestDay.value > 0
+      ? { icon: Target, text: `${bestDay.name} has the highest open rate (${bestDay.value.toFixed(1)}%) based on your sent campaigns. Consider scheduling future sends on this day.` }
+      : { icon: Target, text: "No open-rate data yet. Send your first campaign to see day-of-week engagement insights." },
+    topSegment && topSegment.value > 0
+      ? { icon: Zap, text: `The "${topSegment.name}" occupation segment has the highest click rate (${topSegment.value}%) in your cohort. Prioritize this audience for performance campaigns.` }
+      : { icon: Zap, text: "No segment click data yet. Campaign reports will populate this insight automatically." },
+    bestTimeOfDay && bestTimeOfDay.value > 0
+      ? { icon: TrendingUp, text: `"${bestTimeOfDay.name}" is the peak engagement window across your campaigns. Schedule time-sensitive sends during this period to maximize opens.` }
+      : { icon: TrendingUp, text: "No time-of-day engagement data yet. Data will appear here after your campaigns are reported." },
   ];
 
-  /* Active Campaigns Data */
-  const activeCampaigns = [
-    { name: "Enterprise Q3 Upsell", status: "Running", progress: 75, audience: "12,450" },
-    { name: "Churn Prevention Flow", status: "Optimization", progress: 45, audience: "3,200" },
-    { name: "Welcome Series v2.1", status: "Running", progress: 90, audience: "8,900" }
-  ];
+  // Active Campaigns sourced from real reports
+  const activeCampaigns = reports.slice(0, 3).map((r) => ({
+    name: r.campaign_id,
+    status: "Completed",
+    progress: r.total_sent > 0 ? Math.min(100, Math.round((r.opens / r.total_sent) * 100)) : 0,
+    audience: r.total_sent.toLocaleString(),
+  }));
 
-  /* Recent Activity Data */
-  const recentActivity = [
-    { action: "Campaign brief received", time: "10 mins ago", type: "input" },
-    { action: "Strategy generated", time: "25 mins ago", type: "ai" },
-    { action: "Audience filtered dynamically", time: "1 hour ago", type: "ai" },
-    { action: "Campaign 'Webinar Invite' sent", time: "3 hours ago", type: "execution" },
-    { action: "Analytics tracking started", time: "3.5 hours ago", type: "system" }
-  ];
+  // Recent Activity from real campaign history
+  const recentActivity = reports.slice(0, 5).map((r, idx) => ({
+    action: `Campaign dispatched — ID: ${r.campaign_id}`,
+    time: idx === 0 ? "Most recent" : `Campaign #${reports.length - idx}`,
+    type: "execution",
+  }));
 
   // Custom Tooltip for dark mode support
   const CustomTooltip = ({ active, payload, label }) => {
@@ -106,6 +123,8 @@ export default function Dashboard() {
     return null;
   };
 
+  const hasAnyCampaigns = reports.length > 0;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -119,7 +138,7 @@ export default function Dashboard() {
             AI Marketing Command Center
           </h2>
           <p className="text-slate-500 dark:text-slate-400 mt-1 font-medium">
-            Real-time performance overview and autonomous agent monitoring.
+            Real-time performance overview from live CampaignX API data.
           </p>
         </div>
         <button
@@ -141,23 +160,18 @@ export default function Dashboard() {
             transition={{ delay: idx * 0.1 }}
             className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:-translate-y-1 hover:shadow-lg transition-all duration-300 group"
           >
-            <p className="text-sm font-bold text-slate-500 dark:text-slate-400 group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">{metric.label}</p>
-            <div className="flex items-baseline justify-between mt-3">
+            <div className="flex items-center gap-2 mb-3">
+              <metric.icon className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+              <p className="text-sm font-bold text-slate-500 dark:text-slate-400 group-hover:text-teal-700 dark:group-hover:text-teal-400 transition-colors">{metric.label}</p>
+            </div>
+            <div className="flex items-baseline justify-between">
               <h3 className="text-3xl font-black text-slate-900 dark:text-white">
                 {metric.value}
               </h3>
-              {metric.change && (
-                <span
-                  className={`text-xs font-black flex items-center gap-0.5 px-2.5 py-1 rounded-lg ${metric.trend === "up" ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800" : "bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-800"}`}
-                >
-                  {metric.trend === "up" ? (
-                    <TrendingUp className="w-3 h-3" />
-                  ) : (
-                    <TrendingDown className="w-3 h-3" />
-                  )}
-                  {metric.change}
-                </span>
-              )}
+              <span className={`text-xs font-black flex items-center gap-0.5 px-2.5 py-1 rounded-lg ${metric.trend === "up" ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800" : "bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-800"}`}>
+                {metric.trend === "up" ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                Live
+              </span>
             </div>
           </motion.div>
         ))}
@@ -177,21 +191,27 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="flex-1 w-full min-h-[256px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData.engagementTrend}>
-                <defs>
-                  <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0D9488" stopOpacity={0.25} />
-                    <stop offset="95%" stopColor="#0D9488" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" strokeOpacity={0.15} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b", fontWeight: 600 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b", fontWeight: 600 }} dx={-10} />
-                <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="value" stroke="#0D9488" strokeWidth={3} fillOpacity={1} fill="url(#colorTrend)" activeDot={{ r: 6, fill: "#0D9488", stroke: "#fff", strokeWidth: 2 }} />
-              </AreaChart>
-            </ResponsiveContainer>
+            {chartData.engagementTrend.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData.engagementTrend}>
+                  <defs>
+                    <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#0D9488" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#0D9488" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" strokeOpacity={0.15} />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b", fontWeight: 600 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b", fontWeight: 600 }} dx={-10} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Area type="monotone" dataKey="value" stroke="#0D9488" strokeWidth={3} fillOpacity={1} fill="url(#colorTrend)" activeDot={{ r: 6, fill: "#0D9488", stroke: "#fff", strokeWidth: 2 }} />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center text-slate-400 dark:text-slate-500 text-sm font-medium">
+                No engagement data yet. Send campaigns to see trends here.
+              </div>
+            )}
           </div>
         </div>
 
@@ -199,19 +219,25 @@ export default function Dashboard() {
         <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-lg transition-all duration-300 flex flex-col">
           <div className="flex items-center justify-between mb-6 flex-shrink-0">
             <h4 className="text-lg font-black text-slate-900 dark:text-white">
-              Open Rate Trend
+              Open Rate by Day of Week
             </h4>
           </div>
           <div className="flex-1 w-full min-h-[256px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData.openRateData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" strokeOpacity={0.15} />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b", fontWeight: 600 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b", fontWeight: 600 }} dx={-10} />
-                <Tooltip content={<CustomTooltip />} />
-                <Line type="monotone" dataKey="value" stroke="#0F766E" strokeWidth={3} dot={{ r: 4, fill: "#0F766E", strokeWidth: 2, stroke: "#fff" }} activeDot={{ r: 6, strokeWidth: 0 }} />
-              </LineChart>
-            </ResponsiveContainer>
+            {chartData.openRateData.some(d => d.value > 0) ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData.openRateData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" strokeOpacity={0.15} />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b", fontWeight: 600 }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#64748b", fontWeight: 600 }} dx={-10} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Line type="monotone" dataKey="value" stroke="#0F766E" strokeWidth={3} dot={{ r: 4, fill: "#0F766E", strokeWidth: 2, stroke: "#fff" }} activeDot={{ r: 6, strokeWidth: 0 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center text-slate-400 dark:text-slate-500 text-sm font-medium">
+                No open-rate data yet. Campaign reports will populate this chart.
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -248,14 +274,14 @@ export default function Dashboard() {
           <div className="flex items-center justify-between mb-6">
             <h4 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
               <Target className="w-5 h-5 text-teal-600 dark:text-teal-400" />
-              Active Campaigns
+              Past Campaigns
             </h4>
           </div>
           <div className="flex-1 flex flex-col justify-center space-y-7">
-            {activeCampaigns.map((camp, idx) => (
+            {hasAnyCampaigns ? activeCampaigns.map((camp, idx) => (
               <div key={idx} className="space-y-2.5">
                 <div className="flex justify-between items-center">
-                  <p className="font-bold text-sm text-slate-900 dark:text-white">{camp.name}</p>
+                  <p className="font-bold text-sm text-slate-900 dark:text-white truncate max-w-[160px]" title={camp.name}>{camp.name}</p>
                   <span className="text-[10px] uppercase font-black tracking-widest px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
                     {camp.status}
                   </span>
@@ -264,11 +290,15 @@ export default function Dashboard() {
                   <div className="bg-gradient-to-r from-teal-600 to-teal-400 dark:from-teal-500 dark:to-teal-300 h-2 rounded-full transition-all" style={{ width: `${camp.progress}%` }}></div>
                 </div>
                 <div className="flex justify-between text-[11px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">
-                  <span>{camp.progress}% Complete</span>
-                  <span>{camp.audience} Audience</span>
+                  <span>{camp.progress}% Open Rate</span>
+                  <span>{camp.audience} Sent</span>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="text-center text-slate-400 dark:text-slate-500 text-sm font-medium py-4">
+                No campaigns sent yet. Use the Campaign Workspace to dispatch your first campaign.
+              </div>
+            )}
           </div>
         </div>
 
@@ -281,20 +311,24 @@ export default function Dashboard() {
             </h4>
           </div>
           <div className="flex-1 space-y-4 pt-2">
-             {recentActivity.map((activity, idx) => (
-               <div key={idx} className="flex gap-4 items-start relative pb-4 last:pb-0">
-                 {idx !== recentActivity.length - 1 && (
-                   <div className="absolute left-3.5 top-8 bottom-0 w-px bg-slate-200 dark:bg-slate-800" />
-                 )}
-                 <div className={`relative z-10 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ring-4 ring-white dark:ring-slate-900 ${activity.type === 'ai' ? 'bg-teal-100 dark:bg-teal-900/50 border border-teal-200 dark:border-teal-700/50 text-teal-600 dark:text-teal-400' : 'bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'}`}>
-                   {activity.type === 'ai' ? <Sparkles className="w-3.5 h-3.5" /> : activity.type === 'execution' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Clock className="w-3.5 h-3.5" />}
-                 </div>
-                 <div className="mt-1 flex-1">
-                   <p className="text-sm font-bold text-slate-900 dark:text-slate-200 leading-none">{activity.action}</p>
-                   <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1.5">{activity.time}</p>
-                 </div>
-               </div>
-             ))}
+            {recentActivity.length > 0 ? recentActivity.map((activity, idx) => (
+              <div key={idx} className="flex gap-4 items-start relative pb-4 last:pb-0">
+                {idx !== recentActivity.length - 1 && (
+                  <div className="absolute left-3.5 top-8 bottom-0 w-px bg-slate-200 dark:bg-slate-800" />
+                )}
+                <div className="relative z-10 w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ring-4 ring-white dark:ring-slate-900 bg-teal-100 dark:bg-teal-900/50 border border-teal-200 dark:border-teal-700/50 text-teal-600 dark:text-teal-400">
+                  <Send className="w-3.5 h-3.5" />
+                </div>
+                <div className="mt-1 flex-1 min-w-0">
+                  <p className="text-sm font-bold text-slate-900 dark:text-slate-200 leading-none truncate">{activity.action}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1.5">{activity.time}</p>
+                </div>
+              </div>
+            )) : (
+              <div className="text-center text-slate-400 dark:text-slate-500 text-sm font-medium py-4">
+                No activity recorded yet. Campaign dispatches will appear here.
+              </div>
+            )}
           </div>
         </div>
 
