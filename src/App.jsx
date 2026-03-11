@@ -11,12 +11,18 @@ import ActivityLogs from "./components/ActivityLogs";
 import Audience from "./components/Audience";
 import Schedule from "./components/Schedule";
 import Profile from "./components/Profile";
+import { useRealData } from "./hooks/useRealData";
 
 import { AnimatePresence, motion } from "motion/react";
 
 export default function App() {
   const [currentView, setCurrentView] = useState("campaign");
   const [isDarkMode, setIsDarkMode] = useState(false);
+
+  // ── Single source of truth for all campaign analytics ──
+  // Lifted here so Dashboard, Trends, and Copilot all share the same
+  // fetched data — no duplicate API calls, no timing issues.
+  const { reports, metrics, chartData, isLoading: dataLoading } = useRealData();
 
   // Initialize dark mode from localStorage or system preference
   useEffect(() => {
@@ -47,9 +53,9 @@ export default function App() {
   const renderView = () => {
     switch (currentView) {
       case "dashboard":
-        return <Dashboard />;
+        return <Dashboard reports={reports} metrics={metrics} chartData={chartData} isLoading={dataLoading} />;
       case "trends":
-        return <Trends />;
+        return <Trends metrics={metrics} chartData={chartData} isLoading={dataLoading} />;
       case "activity":
         return <EmailActivity />;
       case "campaign":
@@ -57,7 +63,7 @@ export default function App() {
       case "schedule":
         return <Schedule />;
       case "analytics":
-        return <Trends />; // Rename Trends to Analytics eventually, mapping both for now
+        return <Trends metrics={metrics} chartData={chartData} isLoading={dataLoading} />;
       case "audience":
         return <Audience />;
       case "activity-logs":
@@ -67,7 +73,7 @@ export default function App() {
       case "profile":
         return <Profile />;
       default:
-        return <Dashboard />;
+        return <Dashboard reports={reports} metrics={metrics} chartData={chartData} isLoading={dataLoading} />;
     }
   };
 
@@ -97,8 +103,8 @@ export default function App() {
         </main>
       </div>
 
-      {/* AI Marketing Copilot — floating overlay across all views */}
-      <MarketingCopilot />
+      {/* AI Marketing Copilot — floating overlay, receives real dashboard data */}
+      <MarketingCopilot metrics={metrics} chartData={chartData} reports={reports} dataLoading={dataLoading} />
     </div>
   );
 }

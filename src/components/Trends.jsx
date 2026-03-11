@@ -13,7 +13,6 @@ import {
   Cell,
   Legend,
 } from "recharts";
-import { useRealData } from "../hooks/useRealData";
 import { Loader2, Sparkles, TrendingUp, Target, Users } from "lucide-react";
 
 // Enterprise Color Palette
@@ -21,8 +20,7 @@ const COLORS = ["#0F766E", "#14B8A6", "#2DD4BF", "#5EEAD4", "#99F6E4"];
 const CHART_TEXT = "#94a3b8"; // slate-400
 const CHART_GRID = "#334155"; // slate-700 (dark mode safe)
 
-export default function Trends() {
-  const { metrics, chartData, isLoading } = useRealData();
+export default function Trends({ metrics = {}, chartData = {}, isLoading = false }) {
 
   if (isLoading) {
     return (

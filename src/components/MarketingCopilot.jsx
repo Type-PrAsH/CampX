@@ -6,118 +6,123 @@ import {
     Send,
     Sparkles,
     Loader2,
-    AlertCircle,
     ChevronDown,
     Zap,
     Users,
     Clock,
     TrendingUp,
     Target,
-    MessageSquare,
+    BarChart2,
+    AlertCircle,
 } from "lucide-react";
 import Groq from "groq-sdk";
-import { useRealData } from "../hooks/useRealData";
-
-import { getCustomerCohort } from "../services/campaignx";
+import { getCampaignHistory } from "../services/campaignx";
 
 // ─── Suggested Quick Questions ────────────────────────────────────────────────
-
 const QUICK_QUESTIONS = [
-    { label: "Analyze campaign performance", icon: TrendingUp },
-    { label: "Best send time?", icon: Clock },
-    { label: "Improve open rate", icon: Zap },
-    { label: "Find best audience", icon: Users },
+    { label: "Analyze my campaign performance", icon: TrendingUp },
+    { label: "What's the best time to send emails?", icon: Clock },
+    { label: "How can I improve my open rate?", icon: Zap },
+    { label: "Which audience segment should I target?", icon: Users },
+    { label: "What does my click rate tell me?", icon: BarChart2 },
 ];
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Build rich system prompt from real data ─────────────────────────────────
+function buildSystemPrompt(metrics, chartData, reports) {
+    const campaignIds = getCampaignHistory();
+    const historyCount = campaignIds.length;
 
-async function getCohortSummary() {
-    try {
-        const data = await getCustomerCohort();
-        if (!Array.isArray(data)) return { size: 0, sample: [] };
-        return { size: data.length, sample: data.slice(0, 5) };
-    } catch (e) {
-        console.error("MarketingCopilot failed to fetch live cohort summary:", e);
-        return { size: 0, sample: [] };
-    }
-}
-
-function getCampaignHistoryCount() {
-    try {
-        const raw = localStorage.getItem("campaignx_history");
-        if (!raw) return 0;
-        const data = JSON.parse(raw);
-        return Array.isArray(data) ? data.length : 0;
-    } catch {
-        return 0;
-    }
-}
-
-async function buildSystemPrompt(metrics, chartData) {
-    const cohort = await getCohortSummary();
-    const historyCount = getCampaignHistoryCount();
+    // Derived insights from real chart data
+    const bestDay = (chartData?.openRateData || []).reduce(
+        (best, d) => (d.value > (best?.value ?? -1) ? d : best), null
+    );
+    const bestTimeOfDay = (chartData?.timeOfDayData || []).reduce(
+        (best, d) => (d.value > (best?.value ?? -1) ? d : best), null
+    );
+    const topSegment = (chartData?.clickRateBySegment || [])[0] || null;
 
     const genderStr = (chartData?.genderEngagement || [])
         .map((g) => `${g.name}: ${g.value} opens`)
-        .join(", ");
+        .join(", ") || "No data yet";
 
     const ageStr = (chartData?.ageGroupEngagement || [])
         .map((a) => `${a.name}: ${a.value} opens`)
-        .join(", ");
+        .join(", ") || "No data yet";
 
     const segmentStr = (chartData?.clickRateBySegment || [])
         .map((s) => `${s.name}: ${s.value}% click rate`)
-        .join(", ");
+        .join(", ") || "No data yet";
 
-    const bestTimeOfDay = (chartData?.timeOfDayData || []).reduce(
-        (best, cur) => (cur.value > (best?.value || 0) ? cur : best),
-        null
-    );
+    const timeOfDayStr = (chartData?.timeOfDayData || [])
+        .map((t) => `${t.name}: ${t.value} opens`)
+        .join(", ") || "No data yet";
+
+    const openRateByDayStr = (chartData?.openRateData || [])
+        .map((d) => `${d.name}: ${parseFloat(d.value || 0).toFixed(1)}%`)
+        .join(", ") || "No data yet";
 
     const engTrend = (chartData?.engagementTrend || [])
-        .map((e) => `${e.name}: ${e.value}`)
-        .join(", ");
+        .map((e) => `${e.name}: ${e.value} opens`)
+        .join(", ") || "No data yet";
 
-    return `You are a professional marketing strategist AI working inside the CampX platform.
+    // Per-campaign summary
+    const campaignSummaries = (reports || []).slice(0, 10).map(r =>
+        `  • Campaign ${r.campaign_id}: ${r.total_sent} sent, ${r.opens} opens (${r.open_rate?.toFixed(1)}%), ${r.clicks} clicks (${r.click_rate?.toFixed(1)}%)`
+    ).join("\n") || "  No campaigns sent yet.";
 
-You specialize in:
-- Email marketing
-- Customer segmentation
-- Campaign optimization
-- Engagement growth
+    const hasData = historyCount > 0 && parseFloat(metrics?.totalSent || "0") > 0;
 
-You analyze campaign data and provide actionable marketing insights.
+    return `You are a professional email marketing strategist AI embedded in CampX — an AI-powered campaign management platform.
 
-Always answer in this structured format:
-**Insight:** <short marketing insight>
-**Explanation:** <why this is happening based on the data>
-**Recommended Action:** <specific action to improve the campaign>
+Your job: analyze the LIVE campaign data below and give SPECIFIC, DATA-DRIVEN marketing advice.
 
-Do NOT hallucinate numbers. Use ONLY the data provided below.
+CRITICAL RULES:
+- NEVER invent or hallucinate numbers. Use ONLY what is in the data section below.
+- If data shows "No data yet" or values are 0, acknowledge the lack of data honestly and give general best-practice advice instead.
+- Always reason from the specific numbers given — mention the actual values in your responses.
+- Keep responses concise and actionable.
+- Structure your answers clearly with these sections:
 
---- LIVE CAMPAIGN DATA ---
+**📊 Analysis:** <what the data shows>
+**💡 Insight:** <the key takeaway>
+**🎯 Action:** <specific next step to take>
+
+━━━━━━━━━━━━ LIVE CAMPAIGN METRICS ━━━━━━━━━━━━
 
 Total Emails Sent: ${metrics?.totalSent || "0"}
 Open Rate: ${metrics?.openRate || "0%"}
 Click Rate: ${metrics?.clickRate || "0%"}
 Unsubscribe Rate: ${metrics?.unsubscribes || "0%"}
-Open Rate Trend: ${metrics?.openRateTrend || "neutral"}
-Click Rate Trend: ${metrics?.clickRateTrend || "neutral"}
+Open Rate Trend: ${metrics?.openRateTrend || "unknown"}
+Click Rate Trend: ${metrics?.clickRateTrend || "unknown"}
 
 Total Campaigns Run: ${historyCount}
-Audience Size (Cohort): ${cohort.size} customers
+Data Status: ${hasData ? "Real campaign data loaded ✓" : "No campaigns sent yet — showing cohort demographic data only"}
 
-Gender Engagement: ${genderStr || "No data"}
-Age Group Engagement: ${ageStr || "No data"}
-Click Rate by Segment: ${segmentStr || "No data"}
-Best Time of Day to Send: ${bestTimeOfDay ? bestTimeOfDay.name : "Unknown"}
-Engagement Trend (Weekly): ${engTrend || "No data"}
+━━━━━━━━━━━━ PER-CAMPAIGN BREAKDOWN ━━━━━━━━━━━━
+${campaignSummaries}
 
---- END OF DATA ---`;
+━━━━━━━━━━━━ ENGAGEMENT PATTERNS ━━━━━━━━━━━━
+
+Open Rate by Day of Week: ${openRateByDayStr}
+Best Day to Send: ${bestDay?.value > 0 ? `${bestDay.name} (${bestDay.value.toFixed(1)}% open rate)` : "Insufficient data"}
+
+Time of Day Engagement (opens): ${timeOfDayStr}
+Best Time of Day: ${bestTimeOfDay?.value > 0 ? `${bestTimeOfDay.name} (${bestTimeOfDay.value} opens)` : "Insufficient data"}
+
+Weekly Engagement Trend: ${engTrend}
+
+━━━━━━━━━━━━ AUDIENCE DEMOGRAPHICS (from 5,000-customer cohort CSV) ━━━━━━━━━━━━
+
+Gender Engagement: ${genderStr}
+Age Group Engagement: ${ageStr}
+Click Rate by Occupation Segment: ${segmentStr}
+Top Performing Segment: ${topSegment ? `${topSegment.name} at ${topSegment.value}% click rate` : "No segment data yet"}
+
+━━━━━━━━━━━━ END OF DATA ━━━━━━━━━━━━`;
 }
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
-
 function MessageBubble({ msg, index }) {
     const isUser = msg.role === "user";
 
@@ -150,12 +155,10 @@ function MessageBubble({ msg, index }) {
 }
 
 function FormattedAIMessage({ content }) {
-    // Bold **text** and render structured lines nicely
     const lines = content.split("\n").filter((l) => l.trim() !== "");
     return (
         <div className="space-y-1.5">
             {lines.map((line, i) => {
-                // Bold section headers like **Insight:**
                 const formatted = line.replace(
                     /\*\*(.*?)\*\*/g,
                     '<span class="font-semibold text-teal-700 dark:text-teal-400">$1</span>'
@@ -172,24 +175,51 @@ function FormattedAIMessage({ content }) {
     );
 }
 
-// ─── Main Copilot Component ───────────────────────────────────────────────────
+// ─── Data Status Banner ────────────────────────────────────────────────────────
+function DataStatusBanner({ metrics, dataLoading }) {
+    const hasData = !dataLoading && parseFloat(metrics?.totalSent?.replace(/[^0-9.]/g, '') || "0") > 0;
 
-export default function MarketingCopilot() {
+    if (dataLoading) {
+        return (
+            <div className="mx-3 mb-2 px-3 py-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center gap-2 text-xs text-slate-400">
+                <Loader2 className="w-3 h-3 animate-spin text-teal-500" />
+                Loading campaign data...
+            </div>
+        );
+    }
+
+    if (hasData) {
+        return (
+            <div className="mx-3 mb-2 px-3 py-2 bg-teal-50 dark:bg-teal-900/20 rounded-xl border border-teal-100 dark:border-teal-800/50 flex items-center gap-2 text-xs text-teal-700 dark:text-teal-400 font-medium">
+                <div className="w-2 h-2 rounded-full bg-teal-500" />
+                Live data connected · {metrics.totalSent} sent · {metrics.openRate} open rate
+            </div>
+        );
+    }
+
+    return (
+        <div className="mx-3 mb-2 px-3 py-2 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-100 dark:border-amber-800/50 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400 font-medium">
+            <AlertCircle className="w-3 h-3" />
+            No campaigns sent yet · Cohort data available · Ask general marketing questions
+        </div>
+    );
+}
+
+// ─── Main Copilot Component ───────────────────────────────────────────────────
+export default function MarketingCopilot({ metrics = {}, chartData = {}, reports = [], dataLoading = false }) {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState([
         {
             role: "assistant",
             content:
-                "Hey! 👋 I'm your CampX Marketing Copilot. I can analyze your campaign data, suggest improvements, and answer any marketing questions.\n\nWhat would you like to explore today?",
+                "Hey! 👋 I'm your CampX Marketing Copilot.\n\nI'm connected to your live campaign data — open rates, click rates, audience demographics, and engagement patterns. Ask me anything about your campaigns and I'll give you specific, data-driven advice.\n\nWhat would you like to explore today?",
         },
     ]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState(null);
 
     const chatEndRef = useRef(null);
     const inputRef = useRef(null);
-    const { metrics, chartData } = useRealData();
 
     // Listen for sidebar "AI Copilot" button
     useEffect(() => {
@@ -198,7 +228,7 @@ export default function MarketingCopilot() {
         return () => window.removeEventListener("campx:open-copilot", handler);
     }, []);
 
-    // Auto-scroll to bottom on new messages
+    // Auto-scroll on new messages
     useEffect(() => {
         if (isOpen) {
             chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -217,7 +247,6 @@ export default function MarketingCopilot() {
         if (!text || isLoading) return;
 
         setInput("");
-        setError(null);
 
         const newMessages = [...messages, { role: "user", content: text }];
         setMessages(newMessages);
@@ -230,24 +259,25 @@ export default function MarketingCopilot() {
 
             if (!apiKey) {
                 throw new Error(
-                    "Groq API key required for AI Copilot. Please add it in Settings."
+                    "Groq API key required for AI Copilot. Please add it in Settings → API Configuration."
                 );
             }
 
             const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
 
-            const systemPrompt = await buildSystemPrompt(metrics, chartData);
+            // Build the system prompt using the real props passed from App.jsx
+            const systemPrompt = buildSystemPrompt(metrics, chartData, reports);
 
-            // Build conversation history for multi-turn (keep last 10 turns)
-            const conversationHistory = newMessages.slice(-10).map((m) => ({
+            // Build conversation history for multi-turn (keep last 12 turns)
+            const conversationHistory = newMessages.slice(-12).map((m) => ({
                 role: m.role,
                 content: m.content,
             }));
 
             const response = await groq.chat.completions.create({
                 model: "llama-3.3-70b-versatile",
-                temperature: 0.4,
-                max_tokens: 800,
+                temperature: 0.35,
+                max_tokens: 900,
                 messages: [
                     { role: "system", content: systemPrompt },
                     ...conversationHistory,
@@ -265,7 +295,6 @@ export default function MarketingCopilot() {
         } catch (err) {
             console.error("Copilot error:", err);
             const errMsg = err.message || "Failed to get AI response.";
-            setError(errMsg);
             setMessages((prev) => [
                 ...prev,
                 {
@@ -319,8 +348,8 @@ export default function MarketingCopilot() {
                     )}
                 </AnimatePresence>
 
-                {/* Pulse indicator */}
-                <span className="absolute top-1 right-1 w-3 h-3 rounded-full bg-emerald-400 border-2 border-white animate-pulse" />
+                {/* Data-connected indicator */}
+                <span className={`absolute top-1 right-1 w-3 h-3 rounded-full border-2 border-white ${dataLoading ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse'}`} />
             </motion.button>
 
             {/* ── Copilot Panel ── */}
@@ -331,8 +360,8 @@ export default function MarketingCopilot() {
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.92, y: 20 }}
                         transition={{ type: "spring", stiffness: 280, damping: 24 }}
-                        className="fixed bottom-24 right-6 z-50 w-[380px] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl shadow-slate-300/60 dark:shadow-slate-900/80 border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden"
-                        style={{ maxHeight: "580px" }}
+                        className="fixed bottom-24 right-6 z-50 w-[400px] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl shadow-slate-300/60 dark:shadow-slate-900/80 border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden"
+                        style={{ maxHeight: "600px" }}
                     >
                         {/* ── Header ── */}
                         <div className="bg-gradient-to-r from-teal-700 to-teal-500 p-4 flex items-center justify-between flex-shrink-0">
@@ -345,7 +374,7 @@ export default function MarketingCopilot() {
                                         CampX Marketing Copilot
                                     </p>
                                     <p className="text-teal-100 text-[11px]">
-                                        Powered by Groq · llama-3.3-70b
+                                        Live data · Groq llama-3.3-70b
                                     </p>
                                 </div>
                             </div>
@@ -355,6 +384,11 @@ export default function MarketingCopilot() {
                             >
                                 <X className="w-4 h-4" />
                             </button>
+                        </div>
+
+                        {/* ── Data Status Banner ── */}
+                        <div className="pt-3 pb-0">
+                            <DataStatusBanner metrics={metrics} dataLoading={dataLoading} />
                         </div>
 
                         {/* ── Chat Area ── */}
@@ -420,7 +454,7 @@ export default function MarketingCopilot() {
                                         value={input}
                                         onChange={(e) => setInput(e.target.value)}
                                         onKeyDown={handleKeyDown}
-                                        placeholder="Ask about campaign insights..."
+                                        placeholder="Ask about your campaign performance..."
                                         rows={1}
                                         disabled={isLoading}
                                         className="w-full resize-none bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-400 transition-all disabled:opacity-60 leading-relaxed"
@@ -447,7 +481,7 @@ export default function MarketingCopilot() {
                                 </motion.button>
                             </div>
                             <p className="text-center text-[10px] text-slate-300 dark:text-slate-600 mt-2 font-medium">
-                                Press Enter to send · Shift+Enter for new line
+                                Enter to send · Shift+Enter for new line
                             </p>
                         </div>
                     </motion.div>

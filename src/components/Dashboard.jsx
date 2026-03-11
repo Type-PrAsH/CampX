@@ -17,7 +17,6 @@ import {
   Sparkles,
   Loader2,
   Activity,
-  Clock,
   Target,
   Zap,
   Mail,
@@ -26,11 +25,9 @@ import {
   Send,
 } from "lucide-react";
 import AIInsightModal from "./AIInsightModal";
-import { useRealData } from "../hooks/useRealData";
 
-export default function Dashboard() {
+export default function Dashboard({ reports = [], metrics = {}, chartData = {}, isLoading = false }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { reports, metrics, chartData, isLoading } = useRealData();
 
   if (isLoading) {
     return (
