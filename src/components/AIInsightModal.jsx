@@ -11,6 +11,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import Groq from "groq-sdk";
+import { saveInsightsToDB } from "../services/db";
 
 export default function AIInsightModal({
   isOpen,
@@ -87,6 +88,13 @@ Respond ONLY with the JSON array, no extra text.`;
           parsedInsights = arrVal || [parsedInsights];
         }
         setInsights(parsedInsights.slice(0, 3));
+        // Persist insights to MongoDB (non-blocking)
+        saveInsightsToDB(parsedInsights.slice(0, 3), {
+          totalSent: metrics?.totalSent,
+          openRate: metrics?.openRate,
+          clickRate: metrics?.clickRate,
+          unsubscribes: metrics?.unsubscribes,
+        });
       } catch (parseError) {
         console.error("Failed to parse AI response:", textResponse);
         throw new Error("AI returned malformed data. Please try again.");

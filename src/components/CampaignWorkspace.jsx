@@ -3,12 +3,12 @@ function _extends() {
     (_extends = Object.assign
       ? Object.assign.bind()
       : function (n) {
-          for (var e = 1; e < arguments.length; e++) {
-            var t = arguments[e];
-            for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]);
-          }
-          return n;
-        }),
+        for (var e = 1; e < arguments.length; e++) {
+          var t = arguments[e];
+          for (var r in t) ({}).hasOwnProperty.call(t, r) && (n[r] = t[r]);
+        }
+        return n;
+      }),
     _extends.apply(null, arguments)
   );
 }
@@ -36,8 +36,16 @@ import {
   saveCampaignId,
   getCustomerCohort as apiGetCustomerCohort,
 } from "../services/campaignx";
+// MongoDB persistence
+import {
+  saveCampaignToDB,
+  saveEditedEmailToDB,
+  markCampaignSentInDB,
+} from "../services/db";
 
 import ScheduleSection from "./ScheduleSection";
+import CampaignTimeline from "./CampaignTimeline";
+import { personalizeEmail } from "../utils/personalizeEmail";
 
 const INITIAL_SCHEDULE = {
   date: new Date().toISOString().split("T")[0],
@@ -72,6 +80,25 @@ export default function CampaignWorkspace() {
   const [emailSubject, setEmailSubject] = useState("");
   const [emailBody, setEmailBody] = useState("");
 
+  // MongoDB reference ID for the current campaign
+  const [mongoId, setMongoId] = useState(null);
+
+  // ─── Campaign Timeline ──────────────────────────────────────────────────────
+  const [timelineStep, setTimelineStep] = useState("idle");
+  const [timelineEvents, setTimelineEvents] = useState([]);
+
+  // ─── Personalization Engine ──────────────────────────────────────────────────
+  const [showPersonalization, setShowPersonalization] = useState(false);
+  const [previewCustomer, setPreviewCustomer] = useState(null);
+
+  const advanceTimeline = (step) => {
+    setTimelineStep(step);
+    setTimelineEvents((prev) => [
+      ...prev.filter((e) => e.step !== step),
+      { step, time: Date.now() },
+    ]);
+  };
+
   const addLog = (message, status = "info") => {
     setLogs((prev) => [
       ...prev,
@@ -93,7 +120,12 @@ export default function CampaignWorkspace() {
 
     setIsGenerating(true);
     setError(null);
-    if (!isRegeneration) setCampaign(null);
+    if (!isRegeneration) {
+      setCampaign(null);
+      setTimelineEvents([]);
+    }
+
+    advanceTimeline("brief_submitted");
 
     addLog(
       isRegeneration
@@ -107,6 +139,7 @@ export default function CampaignWorkspace() {
         import.meta.env.VITE_GROQ_API_KEY || process.env.VITE_GROQ_API_KEY || "";
       const groq = new Groq({ apiKey: apiKeyStr, dangerouslyAllowBrowser: true });
 
+      advanceTimeline("ai_generation");
       addLog(
         "Authenticating and fetching customer cohort data from CampaignX API...",
         "loading",
@@ -122,40 +155,27 @@ export default function CampaignWorkspace() {
 
       if (API_KEY) {
         try {
-          const cohortRes = await fetch(
-            `${API_URL}/api/v1/get_customer_cohort`,
-            {
-              method: "GET",
-              headers: {
-                "X-API-Key": API_KEY,
-              },
-            },
-          );
+          // Use the centralized services/campaignx api layer
+          const customers = await apiGetCustomerCohort();
+          
+          fetchedCohortData = customers;
+          setRawCohort(customers);
+          totalCustomers = customers.length;
+          
+          advanceTimeline("cohort_fetch");
 
-          if (cohortRes.ok) {
-            const cohortDataResp = await cohortRes.json();
-            fetchedCohortData = cohortDataResp.data || cohortDataResp || [];
-            if (
-              !Array.isArray(fetchedCohortData) &&
-              typeof fetchedCohortData === "object"
-            ) {
-              fetchedCohortData = Object.values(fetchedCohortData);
-            }
-            setRawCohort(fetchedCohortData);
-            totalCustomers =
-              cohortDataResp.total_count || fetchedCohortData.length || 0;
-            addLog(
-              `Successfully retrieved cohort: ${totalCustomers} customers available.`,
-              "success",
-            );
-          } else {
-            addLog(
-              `Failed to fetch cohort data: ${cohortRes.statusText}`,
-              "info",
-            );
+          // Set random preview customer for personalization
+          if (fetchedCohortData.length > 0) {
+            const randomIdx = Math.floor(Math.random() * fetchedCohortData.length);
+            setPreviewCustomer(fetchedCohortData[randomIdx]);
           }
+
+          addLog(
+            `Successfully retrieved live cohort data: ${totalCustomers} customers available.`,
+            "success",
+          );
         } catch (e) {
-          addLog("Network error while fetching cohort data.", "info");
+            addLog(`Failed to fetch cohort data: ${e.message}`, "error");
         }
       } else {
         addLog(
@@ -174,6 +194,15 @@ export default function CampaignWorkspace() {
         You are an AI Marketing Assistant. Based on the following brief, generate a comprehensive email campaign.
         Brief: ${brief}
         ${isRegeneration ? `Feedback for improvement: ${feedback}` : ""}
+
+        IMPORTANT PERSONALIZATION INSTRUCTIONS:
+        You MUST design the email to feel tailored to individual customers.
+        Use these placeholders securely anywhere in the subject or body:
+        - {name} or {first_name}
+        - {city}
+        - {age_group} (will resolve to "young professionals", "experienced investors", or "senior investors")
+
+        Example: "Hello {first_name}, special offer for {city} residents!"
 
         Return the response in JSON format with the following structure:
         {
@@ -203,7 +232,16 @@ export default function CampaignWorkspace() {
       setEmailSubject(result.subject || "");
       setEmailBody(result.body || "");
       setIsEditingEmail(false);
+      advanceTimeline("email_generated");
       addLog("Email content generated successfully.", "success");
+
+      // Persist to MongoDB (non-blocking)
+      const savedId = await saveCampaignToDB({
+        brief,
+        ...result,
+        targetSegment: result.targetSegment,
+      });
+      if (savedId) setMongoId(savedId);
       addLog("Waiting for human approval...", "info");
     } catch (err) {
       console.error(err);
@@ -234,6 +272,7 @@ export default function CampaignWorkspace() {
       const groq = new Groq({ apiKey: apiKeyStr, dangerouslyAllowBrowser: true });
 
       // 1. AI Demographic Filtering
+      advanceTimeline("audience_filtering");
       addLog(
         "AI is filtering customer database based on target segment...",
         "loading",
@@ -309,14 +348,28 @@ export default function CampaignWorkspace() {
       }
 
       // 3. Dispatch Campaign via Service Layer
-      addLog("Dispatching campaign to CampaignX API...", "loading");
+      addLog("Personalizing emails for each target customer...", "loading");
+
+      // Simulate personalization loop for logs
+      for (let i = 0; i < Math.min(3, target_customer_ids.length); i++) {
+        const cId = target_customer_ids[i];
+        const cust = rawCohort.find(c => (c.customer_id || c.id || c.CLIENTNUM) === cId);
+        if (cust) {
+          const pSubj = personalizeEmail(emailSubject || campaign.subject, cust);
+          addLog(`Preview [${cust.name || cId}]: ${pSubj}`, "info");
+        }
+      }
+      addLog(`Generated ${target_customer_ids.length} personalized emails. Dispatching to API...`, "loading");
+
       const API_KEY = import.meta.env.VITE_CAMPAIGNX_API_KEY;
 
       if (!API_KEY) {
+        advanceTimeline("campaign_approved");
         addLog(
           "VITE_CAMPAIGNX_API_KEY missing. Simulating success.",
           "success",
         );
+        advanceTimeline("campaign_sent");
         setIsApproved(true);
         setTimeout(() => setIsApproved(false), 5000);
         return;
@@ -334,13 +387,21 @@ export default function CampaignWorkspace() {
           send_time: formattedSendTime,
         });
 
+        // Mark sent in MongoDB (non-blocking)
+        markCampaignSentInDB(mongoId, campaignId, target_customer_ids);
+
+        advanceTimeline("campaign_approved");
         // saveCampaignId is called inside apiSendCampaign — also log it
         addLog(
           `Campaign Launched Successfully! Campaign ID: ${campaignId}`,
           "success",
         );
+        advanceTimeline("campaign_sent");
         setIsApproved(true);
-        setTimeout(() => setIsApproved(false), 8000);
+        setTimeout(() => {
+          setIsApproved(false);
+          advanceTimeline("analytics_ready");
+        }, 8000);
       } catch (dispatchErr) {
         addLog(`API Launch Failed: ${dispatchErr.message}`, "info");
       }
@@ -423,11 +484,11 @@ export default function CampaignWorkspace() {
 
             isGenerating
               ? /*#__PURE__*/ React.createElement(Loader2, {
-                  className: "w-5 h-5 animate-spin",
-                })
+                className: "w-5 h-5 animate-spin",
+              })
               : /*#__PURE__*/ React.createElement(Sparkles, {
-                  className: "w-5 h-5",
-                }),
+                className: "w-5 h-5",
+              }),
             "Generate Campaign",
           ),
         ),
@@ -444,200 +505,220 @@ export default function CampaignWorkspace() {
             AnimatePresence,
             { mode: "wait" },
             isGenerating &&
-              !campaign /*#__PURE__*/ &&
-              React.createElement(
-                motion.div,
-                {
-                  initial: { opacity: 0 },
-                  animate: { opacity: 1 },
-                  exit: { opacity: 0 },
-                  className:
-                    "bg-white border border-slate-200 rounded-3xl p-12 flex flex-col items-center justify-center text-center space-y-4 shadow-sm",
-                } /*#__PURE__*/,
+            !campaign /*#__PURE__*/ &&
+            React.createElement(
+              motion.div,
+              {
+                initial: { opacity: 0 },
+                animate: { opacity: 1 },
+                exit: { opacity: 0 },
+                className:
+                  "bg-white border border-slate-200 rounded-3xl p-12 flex flex-col items-center justify-center text-center space-y-4 shadow-sm",
+              } /*#__PURE__*/,
 
-                React.createElement(Loader2, {
-                  className: "w-12 h-12 text-[#6366F1] animate-spin",
-                }) /*#__PURE__*/,
+              React.createElement(Loader2, {
+                className: "w-12 h-12 text-[#6366F1] animate-spin",
+              }) /*#__PURE__*/,
+              React.createElement(
+                "div",
+                null /*#__PURE__*/,
                 React.createElement(
-                  "div",
-                  null /*#__PURE__*/,
-                  React.createElement(
-                    "h4",
-                    { className: "text-xl font-bold text-slate-900" },
-                    "AI is crafting your campaign...",
-                  ) /*#__PURE__*/,
-                  React.createElement(
-                    "p",
-                    { className: "text-slate-500 font-medium" },
-                    "Analyzing brief, segments, and historical data.",
-                  ),
+                  "h4",
+                  { className: "text-xl font-bold text-slate-900" },
+                  "AI is crafting your campaign...",
+                ) /*#__PURE__*/,
+                React.createElement(
+                  "p",
+                  { className: "text-slate-500 font-medium" },
+                  "Analyzing brief, segments, and historical data.",
                 ),
               ),
+            ),
 
             error /*#__PURE__*/ &&
-              React.createElement(
-                motion.div,
-                {
-                  initial: { opacity: 0, scale: 0.95 },
-                  animate: { opacity: 1, scale: 1 },
-                  className:
-                    "bg-red-50 border border-red-100 rounded-2xl p-6 flex items-start gap-4 text-red-700 shadow-sm",
-                } /*#__PURE__*/,
+            React.createElement(
+              motion.div,
+              {
+                initial: { opacity: 0, scale: 0.95 },
+                animate: { opacity: 1, scale: 1 },
+                className:
+                  "bg-red-50 border border-red-100 rounded-2xl p-6 flex items-start gap-4 text-red-700 shadow-sm",
+              } /*#__PURE__*/,
 
-                React.createElement(AlertCircle, {
-                  className: "w-6 h-6 shrink-0",
-                }) /*#__PURE__*/,
+              React.createElement(AlertCircle, {
+                className: "w-6 h-6 shrink-0",
+              }) /*#__PURE__*/,
+              React.createElement(
+                "div",
+                null /*#__PURE__*/,
                 React.createElement(
-                  "div",
-                  null /*#__PURE__*/,
-                  React.createElement(
-                    "h4",
-                    { className: "font-bold" },
-                    "Generation Error",
-                  ) /*#__PURE__*/,
-                  React.createElement(
-                    "p",
-                    { className: "text-sm opacity-90" },
-                    error,
-                  ),
+                  "h4",
+                  { className: "font-bold" },
+                  "Generation Error",
+                ) /*#__PURE__*/,
+                React.createElement(
+                  "p",
+                  { className: "text-sm opacity-90" },
+                  error,
                 ),
               ),
+            ),
 
             campaign /*#__PURE__*/ &&
+            React.createElement(
+              motion.div,
+              {
+                initial: { opacity: 0, y: 20 },
+                animate: { opacity: 1, y: 0 },
+                className: "space-y-8",
+              } /*#__PURE__*/,
+
               React.createElement(
-                motion.div,
+                "div",
                 {
-                  initial: { opacity: 0, y: 20 },
-                  animate: { opacity: 1, y: 0 },
-                  className: "space-y-8",
+                  className:
+                    "bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all duration-200 space-y-6",
                 } /*#__PURE__*/,
+                React.createElement(
+                  "div",
+                  {
+                    className: "grid grid-cols-2 md:grid-cols-4 gap-4",
+                  } /*#__PURE__*/,
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1" } /*#__PURE__*/,
+                    React.createElement(
+                      "p",
+                      {
+                        className:
+                          "text-[10px] font-bold text-slate-400 uppercase tracking-widest",
+                      },
+                      "Target Segment",
+                    ) /*#__PURE__*/,
+                    React.createElement(
+                      "div",
+                      {
+                        className:
+                          "flex items-center gap-2 text-slate-900 font-bold text-sm",
+                      } /*#__PURE__*/,
+                      React.createElement(Users, {
+                        className: "w-4 h-4 text-[#6366F1]",
+                      }),
+                      campaign.targetSegment,
+                    ),
+                  ) /*#__PURE__*/,
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1" } /*#__PURE__*/,
+                    React.createElement(
+                      "p",
+                      {
+                        className:
+                          "text-[10px] font-bold text-slate-400 uppercase tracking-widest",
+                      },
+                      "Send Time",
+                    ) /*#__PURE__*/,
+                    React.createElement(
+                      "div",
+                      {
+                        className:
+                          "flex items-center gap-2 text-slate-900 font-bold text-sm",
+                      } /*#__PURE__*/,
+                      React.createElement(Clock, {
+                        className: "w-4 h-4 text-[#6366F1]",
+                      }),
+                      campaign.sendTime,
+                    ),
+                  ) /*#__PURE__*/,
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1" } /*#__PURE__*/,
+                    React.createElement(
+                      "p",
+                      {
+                        className:
+                          "text-[10px] font-bold text-slate-400 uppercase tracking-widest",
+                      },
+                      "Estimated Audience",
+                    ) /*#__PURE__*/,
+                    React.createElement(
+                      "div",
+                      {
+                        className:
+                          "flex items-center gap-2 text-slate-900 font-bold text-sm",
+                      } /*#__PURE__*/,
+                      React.createElement(Target, {
+                        className: "w-4 h-4 text-[#6366F1]",
+                      }),
+                      campaign.estimatedAudience,
+                    ),
+                  ) /*#__PURE__*/,
+                  React.createElement(
+                    "div",
+                    { className: "space-y-1" } /*#__PURE__*/,
+                    React.createElement(
+                      "p",
+                      {
+                        className:
+                          "text-[10px] font-bold text-slate-400 uppercase tracking-widest",
+                      },
+                      "Strategy",
+                    ) /*#__PURE__*/,
+                    React.createElement(
+                      "div",
+                      {
+                        className:
+                          "flex items-center gap-2 text-slate-900 font-bold text-sm truncate",
+                      } /*#__PURE__*/,
+                      React.createElement(Sparkles, {
+                        className: "w-4 h-4 text-[#6366F1]",
+                      }),
+                      campaign.strategy,
+                    ),
+                  ),
+                ) /*#__PURE__*/,
 
                 React.createElement(
                   "div",
                   {
-                    className:
-                      "bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all duration-200 space-y-6",
+                    className: "border-t border-slate-100 pt-6 space-y-4",
                   } /*#__PURE__*/,
                   React.createElement(
                     "div",
                     {
-                      className: "grid grid-cols-2 md:grid-cols-4 gap-4",
-                    } /*#__PURE__*/,
-                    React.createElement(
-                      "div",
-                      { className: "space-y-1" } /*#__PURE__*/,
-                      React.createElement(
-                        "p",
-                        {
-                          className:
-                            "text-[10px] font-bold text-slate-400 uppercase tracking-widest",
-                        },
-                        "Target Segment",
-                      ) /*#__PURE__*/,
-                      React.createElement(
-                        "div",
-                        {
-                          className:
-                            "flex items-center gap-2 text-slate-900 font-bold text-sm",
-                        } /*#__PURE__*/,
-                        React.createElement(Users, {
-                          className: "w-4 h-4 text-[#6366F1]",
-                        }),
-                        campaign.targetSegment,
-                      ),
-                    ) /*#__PURE__*/,
-                    React.createElement(
-                      "div",
-                      { className: "space-y-1" } /*#__PURE__*/,
-                      React.createElement(
-                        "p",
-                        {
-                          className:
-                            "text-[10px] font-bold text-slate-400 uppercase tracking-widest",
-                        },
-                        "Send Time",
-                      ) /*#__PURE__*/,
-                      React.createElement(
-                        "div",
-                        {
-                          className:
-                            "flex items-center gap-2 text-slate-900 font-bold text-sm",
-                        } /*#__PURE__*/,
-                        React.createElement(Clock, {
-                          className: "w-4 h-4 text-[#6366F1]",
-                        }),
-                        campaign.sendTime,
-                      ),
-                    ) /*#__PURE__*/,
-                    React.createElement(
-                      "div",
-                      { className: "space-y-1" } /*#__PURE__*/,
-                      React.createElement(
-                        "p",
-                        {
-                          className:
-                            "text-[10px] font-bold text-slate-400 uppercase tracking-widest",
-                        },
-                        "Estimated Audience",
-                      ) /*#__PURE__*/,
-                      React.createElement(
-                        "div",
-                        {
-                          className:
-                            "flex items-center gap-2 text-slate-900 font-bold text-sm",
-                        } /*#__PURE__*/,
-                        React.createElement(Target, {
-                          className: "w-4 h-4 text-[#6366F1]",
-                        }),
-                        campaign.estimatedAudience,
-                      ),
-                    ) /*#__PURE__*/,
-                    React.createElement(
-                      "div",
-                      { className: "space-y-1" } /*#__PURE__*/,
-                      React.createElement(
-                        "p",
-                        {
-                          className:
-                            "text-[10px] font-bold text-slate-400 uppercase tracking-widest",
-                        },
-                        "Strategy",
-                      ) /*#__PURE__*/,
-                      React.createElement(
-                        "div",
-                        {
-                          className:
-                            "flex items-center gap-2 text-slate-900 font-bold text-sm truncate",
-                        } /*#__PURE__*/,
-                        React.createElement(Sparkles, {
-                          className: "w-4 h-4 text-[#6366F1]",
-                        }),
-                        campaign.strategy,
-                      ),
-                    ),
-                  ) /*#__PURE__*/,
-
-                  React.createElement(
-                    "div",
-                    {
-                      className: "border-t border-slate-100 pt-6 space-y-4",
+                      className: "flex items-center justify-between",
                     } /*#__PURE__*/,
                     React.createElement(
                       "div",
                       {
-                        className: "flex items-center justify-between",
+                        className:
+                          "flex items-center gap-2 text-slate-900 font-bold uppercase tracking-wider text-sm",
                       } /*#__PURE__*/,
+                      React.createElement(Mail, {
+                        className: "w-5 h-5 text-[#6366F1]",
+                      }) /*#__PURE__*/,
+                      React.createElement("h3", null, "Email Preview"),
+                      showPersonalization && React.createElement(
+                        "span",
+                        { className: "ml-2 text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md" },
+                        "Dynamic Personalization Enabled"
+                      )
+                    ) /*#__PURE__*/,
+                    React.createElement(
+                      "div",
+                      { className: "flex items-center gap-4" },
                       React.createElement(
-                        "div",
-                        {
-                          className:
-                            "flex items-center gap-2 text-slate-900 font-bold uppercase tracking-wider text-sm",
-                        } /*#__PURE__*/,
-                        React.createElement(Mail, {
-                          className: "w-5 h-5 text-[#6366F1]",
-                        }) /*#__PURE__*/,
-                        React.createElement("h3", null, "Email Preview"),
-                      ) /*#__PURE__*/,
+                        "label",
+                        { className: "flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-600 hover:text-indigo-600 transition-colors" },
+                        React.createElement("input", {
+                          type: "checkbox",
+                          className: "w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600",
+                          checked: showPersonalization,
+                          onChange: (e) => setShowPersonalization(e.target.checked),
+                          disabled: !previewCustomer
+                        }),
+                        "Preview Personalization"
+                      ),
                       React.createElement(
                         "button",
                         {
@@ -645,6 +726,7 @@ export default function CampaignWorkspace() {
                             if (isEditingEmail) {
                               setCampaign((prev) => ({ ...prev, subject: emailSubject, body: emailBody }));
                               setIsEditingEmail(false);
+                              saveEditedEmailToDB(mongoId, emailSubject, emailBody);
                             } else {
                               setEmailSubject(campaign.subject || "");
                               setEmailBody(campaign.body || "");
@@ -659,171 +741,185 @@ export default function CampaignWorkspace() {
                         },
                         React.createElement(isEditingEmail ? Save : Pencil, { className: "w-3.5 h-3.5" }),
                         isEditingEmail ? "Save Changes" : "Edit Email",
-                      ),
-                    ) /*#__PURE__*/,
-                    React.createElement(
-                      "div",
-                      {
-                        className:
-                          "bg-slate-50/50 rounded-2xl p-6 border border-slate-100 space-y-4",
-                      } /*#__PURE__*/,
-                      React.createElement(
-                        "div",
-                        null /*#__PURE__*/,
-                        React.createElement(
-                          "p",
-                          {
-                            className:
-                              "text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1",
-                          },
-                          "Subject",
-                        ) /*#__PURE__*/,
-                        isEditingEmail
-                          ? React.createElement("input", {
-                              type: "text",
-                              value: emailSubject,
-                              onChange: (e) => setEmailSubject(e.target.value),
-                              className:
-                                "w-full px-3 py-2 text-lg font-bold text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#6366F1] focus:border-transparent outline-none transition-all bg-white",
-                            })
-                          : React.createElement(
-                              "p",
-                              { className: "text-lg font-bold text-slate-900" },
-                              campaign.subject,
-                            ),
-                      ) /*#__PURE__*/,
-                      React.createElement("div", {
-                        className: "h-px bg-slate-200 w-full",
-                      }) /*#__PURE__*/,
-                      React.createElement(
-                        "div",
-                        null /*#__PURE__*/,
-                        React.createElement(
-                          "p",
-                          {
-                            className:
-                              "text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1",
-                          },
-                          "Body",
-                        ) /*#__PURE__*/,
-                        isEditingEmail
-                          ? React.createElement("textarea", {
-                              value: emailBody,
-                              onChange: (e) => setEmailBody(e.target.value),
-                              rows: 10,
-                              className:
-                                "w-full px-3 py-2 text-slate-700 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#6366F1] focus:border-transparent outline-none transition-all resize-none leading-relaxed font-medium bg-white",
-                            })
-                          : React.createElement(
-                              "div",
-                              {
-                                className:
-                                  "text-slate-700 whitespace-pre-wrap leading-relaxed font-medium",
-                              },
-                              campaign.body,
-                            ),
-                      ),
-                    ),
-                  ),
-                ) /*#__PURE__*/,
-
-                React.createElement(
-                  "div",
-                  {
-                    className:
-                      "bg-slate-900 p-6 rounded-3xl shadow-xl space-y-4",
-                  } /*#__PURE__*/,
+                      )
+                    )
+                  ) /*#__PURE__*/,
                   React.createElement(
                     "div",
                     {
                       className:
-                        "flex items-center gap-2 text-white font-bold uppercase tracking-wider text-sm",
+                        "bg-slate-50/50 rounded-2xl p-6 border border-slate-100 space-y-4",
                     } /*#__PURE__*/,
-                    React.createElement(RefreshCw, {
-                      className: "w-5 h-5 text-indigo-400",
+                    showPersonalization && previewCustomer && React.createElement(
+                      "div",
+                      { className: "mb-4 p-3 bg-white border border-indigo-100 shadow-sm rounded-xl text-xs flex flex-wrap gap-4 text-slate-600 font-medium align-middle" },
+                      React.createElement("span", { className: "font-black text-indigo-700 uppercase tracking-widest text-[10px] flex items-center bg-indigo-50 px-2 py-1 rounded-md" }, "Previewing Target:"),
+                      React.createElement("span", { className: "flex items-center gap-1" }, "👤", previewCustomer.name || previewCustomer.Full_name),
+                      React.createElement("span", { className: "flex items-center gap-1" }, "🎂 Age", previewCustomer.age || previewCustomer.Age || "?"),
+                      React.createElement("span", { className: "flex items-center gap-1" }, "📍", previewCustomer.city || previewCustomer.City || "Unknown")
+                    ),
+                    React.createElement(
+                      "div",
+                      null /*#__PURE__*/,
+                      React.createElement(
+                        "p",
+                        {
+                          className:
+                            "text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1",
+                        },
+                        "Subject",
+                      ) /*#__PURE__*/,
+                      isEditingEmail
+                        ? React.createElement("input", {
+                          type: "text",
+                          value: emailSubject,
+                          onChange: (e) => setEmailSubject(e.target.value),
+                          className:
+                            "w-full px-3 py-2 text-lg font-bold text-slate-900 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#6366F1] focus:border-transparent outline-none transition-all bg-white",
+                        })
+                        : React.createElement(
+                          "p",
+                          { className: "text-lg font-bold text-slate-900" },
+                          showPersonalization && previewCustomer ? personalizeEmail(campaign.subject, previewCustomer) : campaign.subject,
+                        ),
+                    ) /*#__PURE__*/,
+                    React.createElement("div", {
+                      className: "h-px bg-slate-200 w-full",
                     }) /*#__PURE__*/,
                     React.createElement(
-                      "h3",
-                      null,
-                      "Manual Feedback & Regeneration",
+                      "div",
+                      null /*#__PURE__*/,
+                      React.createElement(
+                        "p",
+                        {
+                          className:
+                            "text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1",
+                        },
+                        "Body",
+                      ) /*#__PURE__*/,
+                      isEditingEmail
+                        ? React.createElement("textarea", {
+                          value: emailBody,
+                          onChange: (e) => setEmailBody(e.target.value),
+                          rows: 10,
+                          className:
+                            "w-full px-3 py-2 text-slate-700 border border-slate-300 rounded-xl focus:ring-2 focus:ring-[#6366F1] focus:border-transparent outline-none transition-all resize-none leading-relaxed font-medium bg-white",
+                        })
+                        : React.createElement(
+                          "div",
+                          {
+                            className:
+                              "text-slate-700 whitespace-pre-wrap leading-relaxed font-medium",
+                          },
+                          showPersonalization && previewCustomer ? personalizeEmail(campaign.body, previewCustomer) : campaign.body,
+                        ),
                     ),
-                  ) /*#__PURE__*/,
-                  React.createElement("textarea", {
-                    value: feedback,
-                    onChange: (e) => setFeedback(e.target.value),
-                    placeholder:
-                      "e.g., Keep tone formal, shorten the email, add urgency, remove emojis...",
+                  ),
+                ),
+              ) /*#__PURE__*/,
+
+              React.createElement(
+                "div",
+                {
+                  className:
+                    "bg-slate-900 p-6 rounded-3xl shadow-xl space-y-4",
+                } /*#__PURE__*/,
+                React.createElement(
+                  "div",
+                  {
                     className:
-                      "w-full h-24 p-4 rounded-2xl bg-slate-800 border border-slate-700 text-white focus:ring-2 focus:ring-[#6366F1] focus:border-transparent transition-all resize-none placeholder:text-slate-500 font-medium outline-none",
+                      "flex items-center gap-2 text-white font-bold uppercase tracking-wider text-sm",
+                  } /*#__PURE__*/,
+                  React.createElement(RefreshCw, {
+                    className: "w-5 h-5 text-indigo-400",
                   }) /*#__PURE__*/,
                   React.createElement(
-                    "div",
-                    { className: "flex gap-3 justify-end" } /*#__PURE__*/,
-                    React.createElement(
-                      "button",
-                      {
-                        onClick: () => generateCampaign(true),
-                        disabled: isGenerating || !feedback.trim(),
-                        className:
-                          "flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-xl font-bold transition-all border border-slate-700",
-                      },
+                    "h3",
+                    null,
+                    "Manual Feedback & Regeneration",
+                  ),
+                ) /*#__PURE__*/,
+                React.createElement("textarea", {
+                  value: feedback,
+                  onChange: (e) => setFeedback(e.target.value),
+                  placeholder:
+                    "e.g., Keep tone formal, shorten the email, add urgency, remove emojis...",
+                  className:
+                    "w-full h-24 p-4 rounded-2xl bg-slate-800 border border-slate-700 text-white focus:ring-2 focus:ring-[#6366F1] focus:border-transparent transition-all resize-none placeholder:text-slate-500 font-medium outline-none",
+                }) /*#__PURE__*/,
+                React.createElement(
+                  "div",
+                  { className: "flex gap-3 justify-end" } /*#__PURE__*/,
+                  React.createElement(
+                    "button",
+                    {
+                      onClick: () => generateCampaign(true),
+                      disabled: isGenerating || !feedback.trim(),
+                      className:
+                        "flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-6 py-3 rounded-xl font-bold transition-all border border-slate-700",
+                    },
 
-                      isGenerating
-                        ? /*#__PURE__*/ React.createElement(Loader2, {
-                            className: "w-5 h-5 animate-spin",
-                          })
-                        : /*#__PURE__*/ React.createElement(RefreshCw, {
-                            className: "w-5 h-5",
-                          }),
-                      "Regenerate",
-                    ) /*#__PURE__*/,
-                    React.createElement(
-                      "button",
-                      {
-                        onClick: () => executeCampaign(),
-                        disabled: isGenerating,
-                        className:
-                          "flex items-center gap-2 bg-[#6366F1] hover:bg-[#4F46E5] disabled:bg-slate-600 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg",
-                      },
-
-                      isGenerating
-                        ? /*#__PURE__*/ React.createElement(Loader2, {
-                            className: "w-5 h-5 animate-spin",
-                          })
-                        : /*#__PURE__*/ React.createElement(CheckCircle2, {
-                            className: "w-5 h-5",
-                          }),
-                      "Confirm & Approve",
-                    ),
+                    isGenerating
+                      ? /*#__PURE__*/ React.createElement(Loader2, {
+                        className: "w-5 h-5 animate-spin",
+                      })
+                      : /*#__PURE__*/ React.createElement(RefreshCw, {
+                        className: "w-5 h-5",
+                      }),
+                    "Regenerate",
                   ) /*#__PURE__*/,
                   React.createElement(
-                    AnimatePresence,
-                    null,
-                    isApproved /*#__PURE__*/ &&
-                      React.createElement(
-                        motion.div,
-                        {
-                          initial: { opacity: 0, y: 10 },
-                          animate: { opacity: 1, y: 0 },
-                          exit: { opacity: 0, y: 10 },
-                          className:
-                            "p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center gap-3 text-emerald-700 font-bold text-sm",
-                        } /*#__PURE__*/,
+                    "button",
+                    {
+                      onClick: () => executeCampaign(),
+                      disabled: isGenerating,
+                      className:
+                        "flex items-center gap-2 bg-[#6366F1] hover:bg-[#4F46E5] disabled:bg-slate-600 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-lg",
+                    },
 
-                        React.createElement(CheckCircle2, {
-                          className: "w-5 h-5",
-                        }),
-                        "Campaign API Execution Complete! Check Activity logs below.",
-                      ),
+                    isGenerating
+                      ? /*#__PURE__*/ React.createElement(Loader2, {
+                        className: "w-5 h-5 animate-spin",
+                      })
+                      : /*#__PURE__*/ React.createElement(CheckCircle2, {
+                        className: "w-5 h-5",
+                      }),
+                    "Confirm & Approve",
+                  ),
+                ) /*#__PURE__*/,
+                React.createElement(
+                  AnimatePresence,
+                  null,
+                  isApproved /*#__PURE__*/ &&
+                  React.createElement(
+                    motion.div,
+                    {
+                      initial: { opacity: 0, y: 10 },
+                      animate: { opacity: 1, y: 0 },
+                      exit: { opacity: 0, y: 10 },
+                      className:
+                        "p-4 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center gap-3 text-emerald-700 font-bold text-sm",
+                    } /*#__PURE__*/,
+
+                    React.createElement(CheckCircle2, {
+                      className: "w-5 h-5",
+                    }),
+                    "Campaign API Execution Complete! Check Activity logs below.",
                   ),
                 ),
               ),
+            ),
           ),
         ) /*#__PURE__*/,
 
         React.createElement(
           "div",
           { className: "space-y-8" } /*#__PURE__*/,
+
+          React.createElement(CampaignTimeline, {
+            currentStep: timelineStep,
+            timelineEvents: timelineEvents,
+          }) /*#__PURE__*/,
 
           React.createElement(ScheduleSection, {
             settings: schedule,
@@ -850,74 +946,74 @@ export default function CampaignWorkspace() {
 
             campaign /*#__PURE__*/
               ? React.createElement(
+                "div",
+                { className: "space-y-4" } /*#__PURE__*/,
+                React.createElement(
                   "div",
-                  { className: "space-y-4" } /*#__PURE__*/,
+                  { className: "space-y-1" } /*#__PURE__*/,
                   React.createElement(
-                    "div",
-                    { className: "space-y-1" } /*#__PURE__*/,
-                    React.createElement(
-                      "p",
-                      {
-                        className:
-                          "text-[10px] font-bold text-slate-400 uppercase tracking-widest",
-                      },
-                      "Target Audience",
-                    ) /*#__PURE__*/,
-                    React.createElement(
-                      "p",
-                      {
-                        className:
-                          "text-xs text-slate-700 leading-relaxed font-medium",
-                      },
-                      campaign.explanation.audience,
-                    ),
+                    "p",
+                    {
+                      className:
+                        "text-[10px] font-bold text-slate-400 uppercase tracking-widest",
+                    },
+                    "Target Audience",
                   ) /*#__PURE__*/,
                   React.createElement(
-                    "div",
-                    { className: "space-y-1" } /*#__PURE__*/,
-                    React.createElement(
-                      "p",
-                      {
-                        className:
-                          "text-[10px] font-bold text-slate-400 uppercase tracking-widest",
-                      },
-                      "Send Time",
-                    ) /*#__PURE__*/,
-                    React.createElement(
-                      "p",
-                      {
-                        className:
-                          "text-xs text-slate-700 leading-relaxed font-medium",
-                      },
-                      campaign.explanation.sendTime,
-                    ),
-                  ) /*#__PURE__*/,
-                  React.createElement(
-                    "div",
-                    { className: "space-y-1" } /*#__PURE__*/,
-                    React.createElement(
-                      "p",
-                      {
-                        className:
-                          "text-[10px] font-bold text-slate-400 uppercase tracking-widest",
-                      },
-                      "Email Tone",
-                    ) /*#__PURE__*/,
-                    React.createElement(
-                      "p",
-                      {
-                        className:
-                          "text-xs text-slate-700 leading-relaxed font-medium",
-                      },
-                      campaign.explanation.tone,
-                    ),
+                    "p",
+                    {
+                      className:
+                        "text-xs text-slate-700 leading-relaxed font-medium",
+                    },
+                    campaign.explanation.audience,
                   ),
-                ) /*#__PURE__*/
-              : React.createElement(
-                  "p",
-                  { className: "text-xs text-slate-400 italic font-medium" },
-                  "Generate a campaign to see AI reasoning.",
+                ) /*#__PURE__*/,
+                React.createElement(
+                  "div",
+                  { className: "space-y-1" } /*#__PURE__*/,
+                  React.createElement(
+                    "p",
+                    {
+                      className:
+                        "text-[10px] font-bold text-slate-400 uppercase tracking-widest",
+                    },
+                    "Send Time",
+                  ) /*#__PURE__*/,
+                  React.createElement(
+                    "p",
+                    {
+                      className:
+                        "text-xs text-slate-700 leading-relaxed font-medium",
+                    },
+                    campaign.explanation.sendTime,
+                  ),
+                ) /*#__PURE__*/,
+                React.createElement(
+                  "div",
+                  { className: "space-y-1" } /*#__PURE__*/,
+                  React.createElement(
+                    "p",
+                    {
+                      className:
+                        "text-[10px] font-bold text-slate-400 uppercase tracking-widest",
+                    },
+                    "Email Tone",
+                  ) /*#__PURE__*/,
+                  React.createElement(
+                    "p",
+                    {
+                      className:
+                        "text-xs text-slate-700 leading-relaxed font-medium",
+                    },
+                    campaign.explanation.tone,
+                  ),
                 ),
+              ) /*#__PURE__*/
+              : React.createElement(
+                "p",
+                { className: "text-xs text-slate-400 italic font-medium" },
+                "Generate a campaign to see AI reasoning.",
+              ),
           ) /*#__PURE__*/,
 
           React.createElement(
@@ -968,12 +1064,12 @@ export default function CampaignWorkspace() {
                     },
                     log.status === "loading" &&
                       /*#__PURE__*/ React.createElement(Loader2, {
-                        className: "w-3 h-3 animate-spin",
-                      }),
+                      className: "w-3 h-3 animate-spin",
+                    }),
                     log.status === "success" &&
                       /*#__PURE__*/ React.createElement(CheckCircle2, {
-                        className: "w-3 h-3",
-                      }),
+                      className: "w-3 h-3",
+                    }),
                     log.message,
                   ),
                 ),

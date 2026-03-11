@@ -8,21 +8,9 @@ const getHeaders = () => ({
 });
 
 /**
- * Fetch customer cohort. Caches to localStorage to avoid rate limit.
+ * Fetch customer cohort. Always fetches from the live API.
  */
 export const getCustomerCohort = async () => {
-  const cached = localStorage.getItem(CACHE_KEY_COHORT);
-  if (cached) {
-    try {
-      const data = JSON.parse(cached);
-      if (Array.isArray(data) && data.length > 0) {
-        return data;
-      }
-    } catch (e) {
-      console.error("Failed to parse cached cohort:", e);
-    }
-  }
-
   const response = await fetch(`${config.baseUrl}/api/v1/get_customer_cohort`, {
     headers: getHeaders(),
   });
@@ -34,6 +22,10 @@ export const getCustomerCohort = async () => {
   const payload = await response.json();
   const rawData = payload.data || [];
 
+  if (!Array.isArray(rawData)) {
+      throw new Error(`Invalid cohort format returned from API: expected Array, but got ${typeof rawData}`);
+  }
+
   // Map to expected Customer interface
   const customers = rawData.map((item) => ({
     ...item,
@@ -41,7 +33,6 @@ export const getCustomerCohort = async () => {
     email: item.email || item.Email || "",
   }));
 
-  localStorage.setItem(CACHE_KEY_COHORT, JSON.stringify(customers));
   return customers;
 };
 

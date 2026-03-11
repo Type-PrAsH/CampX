@@ -16,6 +16,7 @@ export default defineConfig(({ mode }) => {
     },
     define: {
       'process.env.GROQ_API_KEY': JSON.stringify(env.GROQ_API_KEY),
+      'process.env.VITE_GROQ_API_KEY': JSON.stringify(env.VITE_GROQ_API_KEY),
     },
   };
 });

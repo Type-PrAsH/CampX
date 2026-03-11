@@ -4,10 +4,10 @@ import {
   TrendingUp,
   Mail,
   PlusCircle,
-  LogOut,
   Settings,
   HelpCircle,
   Flame,
+  Bot,
 } from "lucide-react";
 
 import { clsx } from "clsx";
@@ -60,6 +60,22 @@ export default function Sidebar({ currentView, onViewChange }) {
             </button>
           ))}
         </nav>
+
+        {/* AI Copilot Banner */}
+        <div className="mt-4">
+          <button
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent("campx:open-copilot"))
+            }
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold transition-all bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 hover:from-indigo-100 hover:to-purple-100 border border-indigo-100 hover:border-indigo-200 group"
+          >
+            <Bot className="w-4 h-4 text-indigo-500 group-hover:scale-110 transition-transform" />
+            AI Copilot
+            <span className="ml-auto text-[9px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md">
+              NEW
+            </span>
+          </button>
+        </div>
       </div>
 
       <div className="mt-auto p-6 border-t border-slate-200 space-y-1">
@@ -78,10 +94,6 @@ export default function Sidebar({ currentView, onViewChange }) {
         <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-all">
           <HelpCircle className="w-4 h-4 text-slate-400" />
           Help Center
-        </button>
-        <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold text-red-500 hover:bg-red-50 transition-all mt-4">
-          <LogOut className="w-4 h-4" />
-          Logout
         </button>
       </div>
     </div>

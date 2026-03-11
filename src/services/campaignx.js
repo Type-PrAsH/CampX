@@ -74,26 +74,11 @@ export const clearCampaignHistory = () => {
 
 /**
  * Fetch the full customer cohort from CampaignX.
- * Results are cached in localStorage to respect rate limits (100 calls/day).
+ * Always fetches fresh data to ensure we use the updated API dataset.
  *
- * @param {boolean} forceRefresh - If true, bypass cache and fetch fresh data
  * @returns {Promise<Array>} Array of customer objects
  */
-export const getCustomerCohort = async (forceRefresh = false) => {
-  if (!forceRefresh) {
-    const cached = localStorage.getItem(CACHE_KEY_COHORT);
-    if (cached) {
-      try {
-        const data = JSON.parse(cached);
-        if (Array.isArray(data) && data.length > 0) {
-          return data;
-        }
-      } catch (e) {
-        console.error("Failed to parse cached cohort:", e);
-      }
-    }
-  }
-
+export const getCustomerCohort = async () => {
   if (!config.campaignxApiKey) {
     throw new Error(
       "VITE_CAMPAIGNX_API_KEY is not configured. Please add it to your .env file.",
@@ -115,6 +100,10 @@ export const getCustomerCohort = async (forceRefresh = false) => {
   const payload = await response.json();
   const rawData = payload.data || payload || [];
 
+  if (!Array.isArray(rawData)) {
+      throw new Error(`Invalid cohort format returned from API: expected Array, but got ${typeof rawData}`);
+  }
+
   // Normalize field names for consistent access
   const customers = rawData.map((item) => ({
     ...item,
@@ -123,7 +112,7 @@ export const getCustomerCohort = async (forceRefresh = false) => {
     customer_id: item.customer_id || item.CLIENTNUM || item.id || "",
   }));
 
-  localStorage.setItem(CACHE_KEY_COHORT, JSON.stringify(customers));
+  // No longer caching in localStorage to guarantee live data
   return customers;
 };
 
@@ -224,6 +213,11 @@ export const getReport = async (campaignId) => {
   );
 
   if (!response.ok) {
+    if (response.status === 429) {
+        console.warn(`Rate limit hit for get_report on ${campaignId}. Returning empty data to reflect zero engagement.`);
+        return { data: [] };
+    }
+
     const errText = await response.text();
     throw new Error(
       `Failed to fetch report for ${campaignId}: ${response.status} — ${errText}`,

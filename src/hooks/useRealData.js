@@ -1,5 +1,6 @@
 // CampaignX API service layer
 import { useState, useEffect } from "react";
+import Papa from "papaparse";
 import {
   getReport,
   getCampaignHistory,
@@ -34,8 +35,10 @@ export function useRealData() {
       setIsLoading(true);
       try {
         const campaignIds = getCampaignHistory();
+        console.log("Dashboard analytics fetching for campaign IDs:", campaignIds);
 
         if (campaignIds.length === 0) {
+          console.log("No campaigns found in history.");
           setIsLoading(false);
           return;
         }
@@ -45,7 +48,11 @@ export function useRealData() {
         const reportPromises = campaignIds.map(async (cid) => {
           try {
             const data = await getReport(cid);
+            console.log(`Raw report data for ${cid}:`, data);
+            
             const agg = aggregateReportMetrics(data);
+            console.log(`Aggregated metrics for ${cid}:`, agg);
+            
             allEvents = [...allEvents, ...agg.rawEvents];
 
             return {
@@ -64,7 +71,10 @@ export function useRealData() {
           return null;
         });
 
-        const results = await Promise.all(reportPromises);
+        const [results, csvResponse] = await Promise.all([
+          Promise.all(reportPromises),
+          fetch("/customer_cohort_5000_v2.csv").catch(() => null)
+        ]);
         const validReports = results.filter(Boolean);
         setReports(validReports);
 
@@ -166,10 +176,55 @@ export function useRealData() {
           value: hoursMap[k],
         }));
 
-        // For demographic data not returned by Get Reports (Gender, Age, Segment),
-        // partition the true actual numbers into distributions to reflect the actual size
-        const maleOpens = Math.floor(tOpens * 0.48);
-        const femaleOpens = tOpens - maleOpens;
+        // Parse CSV for true demographic distributions
+        let genderDist = { Male: 0, Female: 0 };
+        let ageDist = { "18-24": 0, "25-34": 0, "35-44": 0, "45+": 0 };
+        let occDist = {};
+        let totalRows = 0;
+
+        if (csvResponse && csvResponse.ok) {
+          try {
+            const csvText = await csvResponse.text();
+            const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+            parsed.data.forEach((row) => {
+              totalRows++;
+              if (row.Gender) {
+                 const g = row.Gender.trim();
+                 genderDist[g] = (genderDist[g] || 0) + 1;
+              }
+              if (row.Age) {
+                 const a = parseInt(row.Age, 10);
+                 if (!isNaN(a)) {
+                   if (a <= 24) ageDist["18-24"]++;
+                   else if (a <= 34) ageDist["25-34"]++;
+                   else if (a <= 44) ageDist["35-44"]++;
+                   else ageDist["45+"]++;
+                 }
+              }
+              if (row.Occupation) {
+                 const o = row.Occupation.trim();
+                 if (o) occDist[o] = (occDist[o] || 0) + 1;
+              }
+            });
+          } catch(e) {
+            console.error("CSV parse error", e);
+          }
+        }
+
+        // Fallbacks if CSV empty/failed
+        if (totalRows === 0) {
+          totalRows = 1; 
+          genderDist = { Male: 0.5, Female: 0.5 };
+          ageDist = { "18-24": 0.25, "25-34": 0.25, "35-44": 0.25, "45+": 0.25 };
+          occDist = { "Retail": 0.4, "SaaS": 0.3, "Finance": 0.2, "Edu": 0.1 };
+        }
+
+        const topOccs = Object.entries(occDist)
+          .sort((a,b) => b[1] - a[1])
+          .slice(0, 4)
+          .map(e => ({ name: e[0], count: e[1] }));
+
+        const safeRows = totalRows;
 
         // Apply state
         setChartData({
@@ -203,47 +258,25 @@ export function useRealData() {
           ],
 
           genderEngagement: [
-            { name: "Male", value: maleOpens },
-            { name: "Female", value: femaleOpens },
+            { name: "Male", value: Math.floor(tOpens * ((genderDist.Male || 0) / safeRows)) },
+            { name: "Female", value: Math.floor(tOpens * ((genderDist.Female || 0) / safeRows)) },
           ],
 
-          ageGroupEngagement: [
-            { name: "18-24", value: Math.floor(tOpens * 0.2) },
-            { name: "25-34", value: Math.floor(tOpens * 0.4) },
-            { name: "35-44", value: Math.floor(tOpens * 0.25) },
-            { name: "45+", value: Math.floor(tOpens * 0.15) },
-          ],
+          ageGroupEngagement: Object.keys(ageDist).map(k => ({
+            name: k,
+            value: Math.floor(tOpens * (ageDist[k] / safeRows))
+          })),
 
-          clickRateBySegment: [
-            {
-              name: "Retail",
-              value:
-                tClicks > 0
-                  ? parseFloat((((tClicks * 0.4) / tSent) * 100).toFixed(1))
-                  : 0,
-            },
-            {
-              name: "SaaS",
-              value:
-                tClicks > 0
-                  ? parseFloat((((tClicks * 0.3) / tSent) * 100).toFixed(1))
-                  : 0,
-            },
-            {
-              name: "Finance",
-              value:
-                tClicks > 0
-                  ? parseFloat((((tClicks * 0.2) / tSent) * 100).toFixed(1))
-                  : 0,
-            },
-            {
-              name: "Edu",
-              value:
-                tClicks > 0
-                  ? parseFloat((((tClicks * 0.1) / tSent) * 100).toFixed(1))
-                  : 0,
-            },
-          ],
+          clickRateBySegment: topOccs.map(occ => {
+            const ratio = occ.count / safeRows;
+            const clicks = tClicks * ratio;
+            const sent = tSent * ratio;
+            const rate = sent > 0 ? ((clicks / sent) * 100).toFixed(1) : 0;
+            return {
+              name: occ.name,
+              value: parseFloat(rate)
+            };
+          })
         });
       } catch (e) {
         console.error("Data aggregation error:", e);
