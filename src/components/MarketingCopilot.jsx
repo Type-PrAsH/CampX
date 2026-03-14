@@ -112,7 +112,7 @@ Best Time of Day: ${bestTimeOfDay?.value > 0 ? `${bestTimeOfDay.name} (${bestTim
 
 Weekly Engagement Trend: ${engTrend}
 
-━━━━━━━━━━━━ AUDIENCE DEMOGRAPHICS (from 5,000-customer cohort CSV) ━━━━━━━━━━━━
+━━━━━━━━━━━━ AUDIENCE DEMOGRAPHICS (from live cohort API) ━━━━━━━━━━━━
 
 Gender Engagement: ${genderStr}
 Age Group Engagement: ${ageStr}

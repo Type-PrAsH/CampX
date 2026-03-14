@@ -1,10 +1,10 @@
 // CampaignX API service layer
 import { useState, useEffect } from "react";
-import Papa from "papaparse";
 import {
   getReport,
   getCampaignHistory,
   aggregateReportMetrics,
+  getCustomerCohort
 } from "../services/campaignx";
 
 export function useRealData() {
@@ -37,44 +37,42 @@ export function useRealData() {
         const campaignIds = getCampaignHistory();
         console.log("Dashboard analytics fetching for campaign IDs:", campaignIds);
 
-        if (campaignIds.length === 0) {
-          console.log("No campaigns found in history.");
-          setIsLoading(false);
-          return;
+        let allEvents = [];
+        let reportPromises = [];
+
+        if (campaignIds.length > 0) {
+          reportPromises = campaignIds.map(async (cid) => {
+            try {
+              const data = await getReport(cid);
+              console.log(`Raw report data for ${cid}:`, data);
+              
+              const agg = aggregateReportMetrics(data);
+              console.log(`Aggregated metrics for ${cid}:`, agg);
+              
+              allEvents = [...allEvents, ...agg.rawEvents];
+
+              return {
+                campaign_id: cid,
+                total_sent: agg.sent,
+                opens: agg.opens,
+                clicks: agg.clicks,
+                unsubscribes: agg.unsubs,
+                open_rate: agg.openRate,
+                click_rate: agg.clickRate,
+                unsubscribe_rate: agg.unsubRate,
+              };
+            } catch (e) {
+              console.error("Failed to fetch report for", cid, e);
+            }
+            return null;
+          });
         }
 
-        let allEvents = [];
-
-        const reportPromises = campaignIds.map(async (cid) => {
-          try {
-            const data = await getReport(cid);
-            console.log(`Raw report data for ${cid}:`, data);
-            
-            const agg = aggregateReportMetrics(data);
-            console.log(`Aggregated metrics for ${cid}:`, agg);
-            
-            allEvents = [...allEvents, ...agg.rawEvents];
-
-            return {
-              campaign_id: cid,
-              total_sent: agg.sent,
-              opens: agg.opens,
-              clicks: agg.clicks,
-              unsubscribes: agg.unsubs,
-              open_rate: agg.openRate,
-              click_rate: agg.clickRate,
-              unsubscribe_rate: agg.unsubRate,
-            };
-          } catch (e) {
-            console.error("Failed to fetch report for", cid, e);
-          }
-          return null;
-        });
-
-        const [results, csvResponse] = await Promise.all([
+        const [results, apiCohort] = await Promise.all([
           Promise.all(reportPromises),
-          fetch("/customer_cohort_5000_v2.csv").catch(() => null)
+          getCustomerCohort().catch(() => [])
         ]);
+
         const validReports = results.filter(Boolean);
         setReports(validReports);
 
@@ -203,42 +201,39 @@ export function useRealData() {
           value: weeklyCampaignMap[wk],
         }));
 
-        // Parse CSV for true demographic distributions
+        // Parse Demographic distributions from the API Cohort directly
         let genderDist = {};
         let ageDist = { "18-24": 0, "25-34": 0, "35-44": 0, "45+": 0 };
         let occDist = {};
         let totalRows = 0;
 
-        if (csvResponse && csvResponse.ok) {
-          try {
-            const csvText = await csvResponse.text();
-            const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
-            parsed.data.forEach((row) => {
-              totalRows++;
-              if (row.Gender) {
-                 const g = row.Gender.trim();
-                 genderDist[g] = (genderDist[g] || 0) + 1;
-              }
-              if (row.Age) {
-                 const a = parseInt(row.Age, 10);
-                 if (!isNaN(a)) {
-                   if (a <= 24) ageDist["18-24"]++;
-                   else if (a <= 34) ageDist["25-34"]++;
-                   else if (a <= 44) ageDist["35-44"]++;
-                   else ageDist["45+"]++;
-                 }
-              }
-              if (row.Occupation) {
-                 const o = row.Occupation.trim();
-                 if (o) occDist[o] = (occDist[o] || 0) + 1;
-              }
-            });
-          } catch(e) {
-            console.error("CSV parse error", e);
-          }
+        if (Array.isArray(apiCohort)) {
+          apiCohort.forEach((row) => {
+            totalRows++;
+            // Map Gender
+            if (row.Gender) {
+               const g = String(row.Gender).trim();
+               genderDist[g] = (genderDist[g] || 0) + 1;
+            }
+            // Map Age
+            if (row.Age) {
+               const a = parseInt(row.Age, 10);
+               if (!isNaN(a)) {
+                 if (a <= 24) ageDist["18-24"]++;
+                 else if (a <= 34) ageDist["25-34"]++;
+                 else if (a <= 44) ageDist["35-44"]++;
+                 else ageDist["45+"]++;
+               }
+            }
+            // Map Occupation
+            if (row.Occupation) {
+               const o = String(row.Occupation).trim();
+               if (o) occDist[o] = (occDist[o] || 0) + 1;
+            }
+          });
         }
 
-        // If CSV failed or returned 0 rows, show empty data — no invented fallbacks
+        // If API returned 0 rows, show empty data — no invented fallbacks
         const safeRows = totalRows > 0 ? totalRows : 1;
 
         const topOccs = Object.entries(occDist)

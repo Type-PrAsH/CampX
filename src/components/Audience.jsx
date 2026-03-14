@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion } from 'motion/react';
 import { Users, Filter, Plus, FileDown, Search, ArrowUpRight, Award, MapPin, Building2, ChevronLeft, ChevronRight, Loader2, BriefcaseBusiness, UserCircle2 } from 'lucide-react';
-import Papa from 'papaparse';
+import { getCustomerCohort } from '../services/campaignx';
 
 export default function Audience() {
   const [allCustomers, setAllCustomers] = useState([]);
@@ -10,24 +10,25 @@ export default function Audience() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  // Load real customers from the CSV cohort file
+  // Load real customers exclusively from the CampaignX Cohort API
   useEffect(() => {
-    async function loadCSV() {
+    async function loadCohort() {
       setIsLoading(true);
       try {
-        const res = await fetch('/customer_cohort_5000_v2.csv');
-        if (!res.ok) throw new Error('Failed to load cohort CSV');
-        const csvText = await res.text();
-        const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
-        setAllCustomers(parsed.data);
+        const data = await getCustomerCohort();
+        if (Array.isArray(data)) {
+          setAllCustomers(data);
+        } else {
+          setAllCustomers([]);
+        }
       } catch (e) {
-        console.error('Audience CSV load error:', e);
+        console.error('Audience API load error:', e);
         setAllCustomers([]);
       } finally {
         setIsLoading(false);
       }
     }
-    loadCSV();
+    loadCohort();
   }, []);
 
   // Real segment counts computed from CSV
