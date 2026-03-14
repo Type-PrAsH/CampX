@@ -1,138 +1,104 @@
 <div align="center">
 
-# 🤖 XDeposit AI Marketing Agent
-### Autonomous AI Marketing System for SuperBFSI
+# 🚀 CampX: AI-Powered Autonomous Marketing Copilot
+### Supercharging Campaign Management for the Modern BFSI Sector
+
+[![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](#)
+[![Vite](https://img.shields.io/badge/Vite-B73BFE?style=for-the-badge&logo=vite&logoColor=FFD62E)](#)
+[![Groq](https://img.shields.io/badge/Groq-f55036?style=for-the-badge&logo=groq&logoColor=white)](#)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](#)
+
+*An end-to-end digital marketing agent that understands briefs, finds audiences, generates strategies, and executes campaigns entirely autonomously.*
 
 </div>
 
 ---
 
-## 🎯 Problem Statement
+## 💡 The Problem
 
-Modern financial institutions struggle with the agility and overhead required to launch marketing campaigns rapidly. The goal of this project is to build an autonomous AI marketing agent for a hypothetical BFSI company called **SuperBFSI**. 
+Modern financial institutions (BFSI) struggle with the agility and overhead required to launch marketing campaigns rapidly. Traditional workflows require a strategist to plan, a copywriter to draft, a data analyst to pull audiences, and a digital marketer to execute. This multi-day pipeline leads to missed opportunities. 
 
-Specifically, the system focuses on marketing **XDeposit**—a high-return term deposit product offering bonus interest rates for female senior citizens. The AI must be capable of understanding raw marketing briefs, devising a campaign strategy, generating content, and utilizing APIs to automatically deploy and monitor the campaign.
+For example, launching **XDeposit**—a high-return term deposit product offering bonus interest rates for female senior citizens—would take weeks to coordinate target demographics with the right messaging.
 
----
+## 🎯 Our Solution: CampX
 
-## 📖 Project Overview
+**CampX** acts as your autonomous, end-to-end digital marketing team. By simply providing a natural language brief, the AI system takes over the entire lifecycle of a marketing campaign. 
 
-The **XDeposit AI Marketing Agent** acts as an end-to-end digital marketing team. By simply providing a natural language brief, the AI system takes over the entire lifecycle of a marketing campaign. It strategically identifies the target demographic (female senior citizens), highlights the unique selling propositions (better returns/bonus benefits), generates compelling copy, and interacts directly with the **CampaignX API** to launch and track the campaign.
-
----
-
-## ✨ Key Features
-
-- **🧠 Natural Language Brief Processing:** Understands plain-text marketing objectives and extracts key parameters.
-- **📊 Strategic Campaign Generation:** Automatically formulates targeting strategies, budget allocation, and ad copy.
-- **🔌 Seamless API Integration:** Interacts directly with ad-networks via the CampaignX API.
-- **🚀 One-Click Autonomous Launch:** Provisions the audience, creates the ad, and publishes the campaign programmatically.
-- **📈 Real-Time Performance Monitoring:** Fetches campaign analytics to measure reach, engagement, and conversion.
+We don't just generate text; we **execute**. CampX identifies the demographic, highlights the Unique Selling Propositions (USPs), automatically interacts with the internal CampaignX API to provision the audience, and launches the campaign programmatically. 
 
 ---
 
-## ⚙️ AI Agent Workflow
+## ✨ Unique Selling Points (USPs) & Core Features
 
-1. **Input Phase:** The user provides a simple text prompt (e.g., *"We are launching XDeposit. It has 8% interest and a 0.5% bonus for female senior citizens. Run a campaign to get 1000 leads."*).
-2. **Strategy formulation (Strategy Agent):** Analyzes the brief, identifies the Exact Target Audience (Females, Age 60+), and defines the core messaging.
-3. **Content Creation (Content Agent):** Drafts the ad title, description, and determines the best call-to-action (CTA).
-4. **API Execution (Execution Agent):** 
-   - Calls the API to create the campaign container.
-   - Calls the API to set the granular audience targeting rules.
-   - Calls the API to publish the campaign live.
-5. **Monitoring (Analytics Agent):** Continuously queries the analytics endpoint to summarize impressions, clicks, and ROI back to the user.
+### 1. 🧠 Context-Aware AI Marketing Copilot
+Our flagship feature is a globally accessible, floating AI strategist powered by **Groq & LLaMA-3.3-70b-versatile**. 
+- **Zero Hallucination Guarantee:** The Copilot is injected with the *exact live metrics* from your dashboard (Open Rates, Click Rates by Segment, Day-of-week engagement). It reasons **strictly** from this real data to give you mathematically sound marketing advice, never inventing numbers.
+
+### 2. ⚡ Real-Time "No-Mock" Data Architecture
+We don't do smoke and mirrors. Every chart, metric, and audience segment on the dashboard is powered by 100% real data fetched from live backend REST APIs.
+- **Dynamic Aggregation:** The system dynamically computes time-of-day engagement patterns, daily volumes, and demographic click-rates (Age, Gender, Occupation) directly from live cohort data.
+
+### 3. 🎯 Advanced Audience Intelligence
+- **Live Cohort API:** Handles 5,000+ customer records effortlessly with real-time text filtering.
+- **Proprietary Engagement Scoring:** Customers are scored (0-99) in real-time based on a proprietary algorithm factoring in Monthly Income, Age proximity to the target demographic, KYC status, and App Installation status.
+
+### 4. 🚀 Autonomous "One-Click" Execution
+- **Brand-Aligned Generation:** Instantly generates highly targeted email subject lines, preview text, and HTML bodies that mimic your specific brand voice.
+- **Seamless Dispatch:** Hits the `sendCampaign` API to dispatch the emails and updates the global ledger and analytics dashboard in real-time.
 
 ---
 
-## 🔗 API Integrations
+## ⚙️ How It Works (Under the Hood)
 
-The system relies heavily on automated API calls to bypass structural human dependencies. We execute standard RESTful HTTP requests to interact with ad networks, ensuring that targeting, publishing, and monitoring are entirely code-driven.
+CampX breaks down complex marketing briefs using a multi-agent workflow:
 
-### 📦 CampaignX API Usage 
+1. **Input Phase:** The user provides a text prompt (e.g., *"Launch an XDeposit campaign offering 8% interest and a 0.5% bonus for female senior citizens to get 1000 leads."*).
+2. **Strategy Agent:** Analyzes the brief and flags the exact Audience Cohort (Females, Age 60+).
+3. **Content Agent:** Drafts the ad title, description, and high-converting HTML CTA.
+4. **Execution API:**
+   - `GET /api/v1/get_customer_cohort` to fetch targetable demographics.
+   - `POST /api/v1/campaigns` to create the campaign payload.
+   - `POST /api/v1/campaigns/{id}/publish` to push the campaign live.
 
-Below is the detailed breakdown of the CampaignX API endpoints (v1) integrated into our workflow:
+---
 
-#### 1. Create Campaign
-- **Name:** Campaign Creation API
-- **Endpoint:** `POST /api/v1/campaigns`
-- **Function:** Initializes a new campaign draft in the CampaignX system.
-- **Where it is used:** Used by the Execution Agent immediately after the strategy phase to create the main campaign container.
-- **Request Format:**
-  ```json
-  {
-    "name": "XDeposit Senior Citizen Promo",
-    "budget": 5000,
-    "currency": "USD",
-    "objective": "LEAD_GENERATION"
-  }
-  ```
-- **Response Format:**
-  ```json
-  {
-    "campaign_id": "CMP-98765",
-    "status": "DRAFT",
-    "created_at": "2023-10-25T10:00:00Z"
-  }
-  ```
+## 🛠️ Tech Stack & Architecture
 
-#### 2. Audience Targeting
-- **Name:** Audience Definition API
-- **Endpoint:** `POST /api/v1/campaigns/{campaign_id}/audience`
-- **Function:** Attaches specific demographic targeting rules to the campaign.
-- **Where it is used:** Used by the Execution Agent to ensure the ads only reach female senior citizens.
-- **Request Format:**
-  ```json
-  {
-    "demographics": {
-      "age_min": 60,
-      "age_max": 100,
-      "gender": "FEMALE"
-    },
-    "interests": ["Retirement Planning", "Fixed Deposits", "Investment"]
-  }
-  ```
-- **Response Format:**
-  ```json
-  {
-    "audience_id": "AUD-12345",
-    "estimated_reach": 250000,
-    "status": "APPLIED"
-  }
-  ```
+- **Frontend Framework**: React (Vite)
+- **Styling & UI**: Tailwind CSS, Framer Motion (for fluid, 60fps glassmorphism animations)
+- **Data Visualization**: Recharts (for real-time engagement and demographic plotting)
+- **AI/LLM Engine**: Groq Cloud SDK (LLaMA-3.3-70b-versatile for sub-second reasoning)
+- **API Communication**: RESTful JSON API integration with dynamic caching layers.
 
-#### 3. Campaign Publishing
-- **Name:** Publish Campaign API
-- **Endpoint:** `POST /api/v1/campaigns/{campaign_id}/publish`
-- **Function:** Transitions the campaign from "DRAFT" to "ACTIVE", spending real budget.
-- **Where it is used:** The final step for the Execution Agent once the content and audience have been verified.
-- **Request Format:**
-  ```json
-  {
-    "scheduled_start": "NOW",
-    "auto_optimize": true
-  }
-  ```
-- **Response Format:**
-  ```json
-  {
-    "campaign_id": "CMP-98765",
-    "status": "ACTIVE",
-    "message": "Campaign is now live."
-  }
-  ```
+---
 
-#### 4. Analytics and Monitoring
-- **Name:** Campaign Analytics API
-- **Endpoint:** `GET /api/v1/campaigns/{campaign_id}/analytics`
-- **Function:** Retrieves real-time performance metrics for a running campaign.
-- **Where it is used:** Used periodically by the Analytics Agent to compile health reports.
-- **Request Format:** *No request body. Query parameter based.*
-- **Response Format:**
-  ```json
-  {
-    "impressions": 15420,
-    "clicks": 1023,
-    "leads": 45,
-    "spend": 120.50
-  }
-  ```
+## 🚀 Quick Setup & Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/Type-PrAsH/CampX.git
+   cd CampX
+   ```
+
+2. **Install Dependencies**
+   ```bash
+   npm install
+   ```
+
+3. **Configure Environment Variables**
+   Create a `.env` file in the root directory and add your Groq API Key (Alternatively, enter it directly in the App's "Settings" page):
+   ```env
+   VITE_GROQ_API_KEY=your_groq_api_key_here
+   ```
+
+4. **Run the Development Server**
+   ```bash
+   npm run dev
+   ```
+   Navigate to `http://localhost:5173` to see the magic.
+
+---
+
+<div align="center">
+  <b>Built with ❤️ for the Future of Marketing</b>
+</div>
