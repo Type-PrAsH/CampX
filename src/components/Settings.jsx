@@ -17,6 +17,8 @@ export default function Settings() {
   });
 
   const [isSaved, setIsSaved] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
     // Load from localStorage or fallback to env vars (for initial hydration)
@@ -37,16 +39,47 @@ export default function Settings() {
   const handleChange = (e) => {
     setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
     setIsSaved(false);
+    setErrorMsg("");
   };
 
-  const handleSave = () => {
-    localStorage.setItem("campaignx_api_url", formData.campaignxUrl);
-    localStorage.setItem("campaignx_api_key", formData.campaignxKey);
-    localStorage.setItem("groq_api_key", formData.groqKey);
-    setIsSaved(true);
+  const handleSave = async () => {
+    setIsTesting(true);
+    setErrorMsg("");
+    setIsSaved(false);
 
-    // Auto-hide success message after 3 seconds
-    setTimeout(() => setIsSaved(false), 3000);
+    try {
+      const cleanUrl = formData.campaignxUrl.replace(/\/$/, "");
+      
+      // 1. Validate the format/connection before saving
+      const response = await fetch(`${cleanUrl}/api/v1/get_customer_cohort`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": formData.campaignxKey,
+        },
+      });
+
+      if (!response.ok && response.status !== 429) {
+        throw new Error(`API returned ${response.status}`);
+      }
+
+      // 2. Persist the values if validation passed
+      localStorage.setItem("campaignx_api_url", cleanUrl);
+      localStorage.setItem("campaignx_api_key", formData.campaignxKey);
+      localStorage.setItem("groq_api_key", formData.groqKey);
+      
+      setIsSaved(true);
+      setTimeout(() => setIsSaved(false), 3000);
+
+      // Force other active components to read the new config immediately
+      window.dispatchEvent(new Event("campx:config-updated"));
+      
+    } catch (err) {
+      console.error("Config test failed:", err);
+      setErrorMsg("API connection failed. Please verify URL or Authentication Key.");
+    } finally {
+      setIsTesting(false);
+    }
   };
 
   return (
@@ -67,26 +100,37 @@ export default function Settings() {
       </div>
 
       <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-        <div className="p-6 md:p-8 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h3 className="text-xl font-bold text-slate-900 dark:text-white">
-              API Credentials
-            </h3>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-1">
-              Manage connections to external services and AI models.
-            </p>
+        <div className="p-6 md:p-8 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 flex flex-col gap-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                API Credentials
+              </h3>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-1">
+                Manage connections to external services and AI models.
+              </p>
+            </div>
+            <button
+              onClick={handleSave}
+              disabled={isTesting}
+              className="flex items-center gap-2 bg-teal-700 hover:bg-teal-800 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isTesting ? (
+                <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+              ) : isSaved ? (
+                <CheckCircle2 className="w-4 h-4" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              {isTesting ? "Testing Connection..." : isSaved ? "Saved Successfully" : "Save Changes"}
+            </button>
           </div>
-          <button
-            onClick={handleSave}
-            className="flex items-center gap-2 bg-teal-700 hover:bg-teal-800 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-sm active:scale-95"
-          >
-            {isSaved ? (
-              <CheckCircle2 className="w-4 h-4" />
-            ) : (
-              <Save className="w-4 h-4" />
-            )}
-            {isSaved ? "Saved Successfully" : "Save Changes"}
-          </button>
+          
+          {errorMsg && (
+            <div className="bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 text-sm font-bold px-4 py-3 rounded-lg border border-rose-100 dark:border-rose-800/50">
+              {errorMsg}
+            </div>
+          )}
         </div>
 
         <div className="p-6 md:p-8 space-y-8">
